@@ -1,7 +1,6 @@
 import Foundation
 
 /// Available Whisper model sizes with their expected file names.
-/// Compatible with ModelDownloadManager's WhisperModel enum for merge.
 public enum WhisperModelSize: String, CaseIterable, Identifiable, Sendable {
     case tiny = "tiny.en"
     case base = "base.en"
@@ -43,22 +42,24 @@ public enum WhisperModelSize: String, CaseIterable, Identifiable, Sendable {
 
 /// Utility for locating model files in the app's Documents directory.
 public enum WhisperModelLocator {
-    /// Returns the models directory URL.
+    /// Returns the models directory URL (does not create it).
     public static var modelsDirectory: URL {
         let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         return documentsDir.appendingPathComponent("Models", isDirectory: true)
     }
 
     /// Returns the URL where a model file should be stored.
-    public static func modelFileURL(for size: WhisperModelSize) -> URL {
+    /// Creates the models directory if needed. Throws on filesystem errors.
+    public static func modelFileURL(for size: WhisperModelSize) throws -> URL {
         let dir = modelsDirectory
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent(size.fileName)
     }
 
-    /// Check if a model file exists on disk.
+    /// Check if a model file exists on disk (side-effect free — does not create directories).
     public static func isModelDownloaded(_ size: WhisperModelSize) -> Bool {
-        FileManager.default.fileExists(atPath: modelFileURL(for: size).path)
+        let fileURL = modelsDirectory.appendingPathComponent(size.fileName)
+        return FileManager.default.fileExists(atPath: fileURL.path)
     }
 
     /// Returns all downloaded model sizes.

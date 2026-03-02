@@ -15,14 +15,14 @@ build/
 .build/
 .swiftpm/
 Packages/
-Package.resolved
 
 # macOS
 .DS_Store
 *.dSYM
 
 # Models (large binary files — downloaded at runtime)
-*.bin
+# Scoped to model storage paths only
+**/Models/*.bin
 
 # CocoaPods (if ever used)
 Pods/

@@ -35,15 +35,18 @@ public final class RecordingViewModel {
 
     // MARK: - Private
 
-    private let transcriptionService: WhisperTranscriptionService
+    private let transcriptionService: any TranscriptionServiceProtocol
     private var audioEngine: AVAudioEngine?
     private var recordingTimer: Timer?
     private var recordedFrames: [Float] = []
     private let sampleRate: Double = 16_000
 
+    /// Maximum audio level samples to keep (rolling window for waveform display).
+    private let maxAudioLevels = 120
+
     // MARK: - Init
 
-    public init(transcriptionService: WhisperTranscriptionService = WhisperTranscriptionService()) {
+    public init(transcriptionService: any TranscriptionServiceProtocol = WhisperTranscriptionService()) {
         self.transcriptionService = transcriptionService
     }
 
@@ -137,8 +140,7 @@ public final class RecordingViewModel {
                     ))
                     Task { @MainActor in
                         self.recordedFrames.append(contentsOf: frames)
-                        self.currentAudioLevel = level
-                        self.audioLevels.append(level)
+                        self.appendAudioLevel(level)
                     }
                 }
             } else {
@@ -149,8 +151,7 @@ public final class RecordingViewModel {
                     ))
                     Task { @MainActor in
                         self.recordedFrames.append(contentsOf: frames)
-                        self.currentAudioLevel = level
-                        self.audioLevels.append(level)
+                        self.appendAudioLevel(level)
                     }
                 }
             }
@@ -170,6 +171,16 @@ public final class RecordingViewModel {
         }
     }
 
+    /// Append audio level with rolling window cap.
+    private func appendAudioLevel(_ level: Float) {
+        currentAudioLevel = level
+        audioLevels.append(level)
+        if audioLevels.count > maxAudioLevels {
+            audioLevels.removeFirst(audioLevels.count - maxAudioLevels)
+        }
+    }
+
+    /// Stop recording and begin transcription.
     private func stopRecording() {
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
@@ -178,16 +189,21 @@ public final class RecordingViewModel {
         recordingTimer = nil
         currentAudioLevel = 0
 
-        guard !recordedFrames.isEmpty else {
-            state = .error("No audio was recorded")
-            return
-        }
-
+        // Yield to the main run loop so any queued frame-append tasks complete
+        // before we snapshot recordedFrames for transcription.
         state = .transcribing
-        let frames = recordedFrames
 
-        Task {
-            await transcribe(audioFrames: frames)
+        Task { @MainActor in
+            // By the time this executes, all prior MainActor tasks
+            // (frame appends) will have completed.
+            let frames = self.recordedFrames
+
+            guard !frames.isEmpty else {
+                self.state = .error("No audio was recorded")
+                return
+            }
+
+            await self.transcribe(audioFrames: frames)
         }
     }
 

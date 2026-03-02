@@ -11,7 +11,7 @@ let package = Package(
         .library(name: "KrakWhisper", targets: ["KrakWhisper"])
     ],
     dependencies: [
-        .package(url: "https://github.com/exPHAT/SwiftWhisper.git", branch: "master")
+        .package(url: "https://github.com/exPHAT/SwiftWhisper.git", from: "1.2.0")
     ],
     targets: [
         .target(

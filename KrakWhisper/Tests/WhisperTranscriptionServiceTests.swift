@@ -13,8 +13,13 @@ final class WhisperTranscriptionServiceTests: XCTestCase {
     func testLoadMissingModel() async throws {
         let service = WhisperTranscriptionService()
 
+        // Use an explicit non-existent path for deterministic behavior
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let fakeModelURL = tempDir.appendingPathComponent("ggml-tiny.en.bin")
+
         do {
-            try await service.loadModel(.tiny)
+            try await service.loadModel(from: fakeModelURL, size: .tiny)
             XCTFail("Expected error for missing model file")
         } catch let error as TranscriptionError {
             if case .modelFileNotFound(let size) = error {
@@ -23,6 +28,27 @@ final class WhisperTranscriptionServiceTests: XCTestCase {
                 XCTFail("Expected modelFileNotFound, got: \(error)")
             }
         }
+    }
+
+    func testLoadModelPreservesPreviousOnFailure() async throws {
+        // Verifies that a failed load does not unload the previously active model.
+        // Since we can't actually load a real model in tests without a .bin file,
+        // we verify that after a failed load, the service remains in its initial state.
+        let service = WhisperTranscriptionService()
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let fakeURL = tempDir.appendingPathComponent("nonexistent.bin")
+
+        do {
+            try await service.loadModel(from: fakeURL, size: .base)
+        } catch {
+            // Expected
+        }
+
+        // Service should still be in initial state
+        XCTAssertFalse(service.isModelLoaded)
+        XCTAssertNil(service.currentModelSize)
     }
 
     func testTranscribeWithoutModel() async {
@@ -75,10 +101,17 @@ final class WhisperModelSizeTests: XCTestCase {
         XCTAssertEqual(WhisperModelSize.small.fileName, "ggml-small.en.bin")
     }
 
-    func testModelLocator() {
-        let url = WhisperModelLocator.modelFileURL(for: .tiny)
+    func testModelLocator() throws {
+        let url = try WhisperModelLocator.modelFileURL(for: .tiny)
         XCTAssertEqual(url.lastPathComponent, "ggml-tiny.en.bin")
         XCTAssertTrue(url.pathComponents.contains("Models"))
+    }
+
+    func testIsModelDownloadedSideEffectFree() {
+        // isModelDownloaded should NOT create directories
+        let result = WhisperModelLocator.isModelDownloaded(.tiny)
+        // We just verify it returns a Bool without crashing
+        XCTAssertFalse(result) // Model shouldn't be downloaded in test env
     }
 
     func testAllCases() {

@@ -34,13 +34,8 @@ public enum TranscriptionError: LocalizedError, Sendable {
 
 /// The result of a transcription operation.
 public struct TranscriptionResult: Sendable {
-    /// The full transcribed text.
     public let text: String
-
-    /// Individual segments with timing information.
     public let segments: [TranscriptionSegment]
-
-    /// Time taken to transcribe in seconds.
     public let duration: TimeInterval
 
     public init(text: String, segments: [TranscriptionSegment], duration: TimeInterval) {
@@ -110,19 +105,22 @@ public final class WhisperTranscriptionService: TranscriptionServiceProtocol, @u
 
     /// Load a Whisper model from the standard Documents/Models directory.
     public func loadModel(_ size: WhisperModelSize) async throws {
-        let url = WhisperModelLocator.modelFileURL(for: size)
+        let url = try WhisperModelLocator.modelFileURL(for: size)
         try await loadModel(from: url, size: size)
     }
 
     /// Load a Whisper model from an arbitrary file URL.
+    /// Validates file existence before unloading the previous model.
     public func loadModel(from url: URL, size: WhisperModelSize) async throws {
-        unloadModel()
-
+        // Validate BEFORE unloading — preserve current model on failure
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw TranscriptionError.modelFileNotFound(size)
         }
 
+        // Create the new whisper instance before swapping
         let newWhisper = Whisper(fromFileURL: url)
+
+        // Atomic swap — only unload after successful creation
         lock.withLock {
             self.whisper = newWhisper
             self._currentModelSize = size
