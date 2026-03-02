@@ -35,11 +35,11 @@ final class ModelDownloadManager: NSObject, ObservableObject {
 
     // MARK: - Published State
 
-    /// Per-model download state, keyed by WhisperModel
-    @Published private(set) var downloadStates: [WhisperModel: ModelDownloadState] = [:]
+    /// Per-model download state, keyed by WhisperModelSize
+    @Published private(set) var downloadStates: [WhisperModelSize: ModelDownloadState] = [:]
 
     /// The currently selected/active model
-    @Published var selectedModel: WhisperModel {
+    @Published var selectedModel: WhisperModelSize {
         didSet {
             UserDefaults.standard.set(selectedModel.rawValue, forKey: Self.selectedModelKey)
         }
@@ -65,7 +65,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     }()
 
     /// Map of active download tasks keyed by model
-    private var activeDownloads: [WhisperModel: URLSessionDownloadTask] = [:]
+    private var activeDownloads: [WhisperModelSize: URLSessionDownloadTask] = [:]
 
     /// Background completion handler provided by the system
     var backgroundCompletionHandler: (() -> Void)?
@@ -83,10 +83,10 @@ final class ModelDownloadManager: NSObject, ObservableObject {
 
         // Restore selected model from UserDefaults
         if let savedRawValue = UserDefaults.standard.string(forKey: Self.selectedModelKey),
-           let savedModel = WhisperModel(rawValue: savedRawValue) {
+           let savedModel = WhisperModelSize(rawValue: savedRawValue) {
             self.selectedModel = savedModel
         } else {
-            self.selectedModel = WhisperModel.defaultModel
+            self.selectedModel = WhisperModelSize.defaultModel
         }
 
         super.init()
@@ -103,12 +103,12 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     // MARK: - Public API
 
     /// Returns the local file URL for a model (whether or not it exists).
-    func localURL(for model: WhisperModel) -> URL {
+    func localURL(for model: WhisperModelSize) -> URL {
         modelsDirectory.appendingPathComponent(model.filename)
     }
 
     /// Whether the model file exists locally and passes validation.
-    func isModelAvailable(_ model: WhisperModel) -> Bool {
+    func isModelAvailable(_ model: WhisperModelSize) -> Bool {
         downloadStates[model] == .downloaded
     }
 
@@ -118,7 +118,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     }
 
     /// Start downloading a model. No-op if already downloaded or in progress.
-    func download(_ model: WhisperModel) {
+    func download(_ model: WhisperModelSize) {
         guard downloadStates[model] != .downloaded else {
             logger.info("Model \(model.rawValue) already downloaded, skipping.")
             return
@@ -139,7 +139,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     }
 
     /// Cancel an in-progress download.
-    func cancelDownload(_ model: WhisperModel) {
+    func cancelDownload(_ model: WhisperModelSize) {
         guard let task = activeDownloads[model] else { return }
         logger.info("Cancelling download of \(model.rawValue)")
         task.cancel()
@@ -148,7 +148,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     }
 
     /// Delete a downloaded model file.
-    func deleteModel(_ model: WhisperModel) {
+    func deleteModel(_ model: WhisperModelSize) {
         let fileURL = localURL(for: model)
         do {
             try FileManager.default.removeItem(at: fileURL)
@@ -157,7 +157,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
 
             // If the deleted model was selected, switch to default
             if selectedModel == model {
-                selectedModel = WhisperModel.defaultModel
+                selectedModel = WhisperModelSize.defaultModel
             }
         } catch {
             logger.error("Failed to delete model \(model.rawValue): \(error.localizedDescription)")
@@ -166,7 +166,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
 
     /// Refresh the download state of all models by checking local files.
     func refreshDownloadStates() {
-        for model in WhisperModel.allCases {
+        for model in WhisperModelSize.allCases {
             // Don't overwrite active downloads
             if case .downloading = downloadStates[model] { continue }
 
@@ -187,7 +187,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
 
     /// Total disk space used by downloaded models.
     var totalDiskUsage: Int64 {
-        WhisperModel.allCases.reduce(0) { total, model in
+        WhisperModelSize.allCases.reduce(0) { total, model in
             let url = localURL(for: model)
             guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
                   let size = attrs[.size] as? Int64 else { return total }
@@ -203,7 +203,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     // MARK: - Private Helpers
 
     /// Validate a downloaded model file by checking its size against expected range.
-    private func validateModelFile(_ model: WhisperModel) -> Bool {
+    private func validateModelFile(_ model: WhisperModelSize) -> Bool {
         let fileURL = localURL(for: model)
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
               let fileSize = attrs[.size] as? Int64 else {
@@ -221,7 +221,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     }
 
     /// Move a completed download temp file to the models directory.
-    private func moveDownloadedFile(from tempURL: URL, for model: WhisperModel) throws {
+    private func moveDownloadedFile(from tempURL: URL, for model: WhisperModelSize) throws {
         let destinationURL = localURL(for: model)
 
         // Remove any existing file first
@@ -243,7 +243,7 @@ extension ModelDownloadManager: URLSessionDownloadDelegate {
         didFinishDownloadingTo location: URL
     ) {
         guard let modelRaw = downloadTask.taskDescription,
-              let model = WhisperModel(rawValue: modelRaw) else {
+              let model = WhisperModelSize(rawValue: modelRaw) else {
             return
         }
 
@@ -277,7 +277,7 @@ extension ModelDownloadManager: URLSessionDownloadDelegate {
         totalBytesExpectedToWrite: Int64
     ) {
         guard let modelRaw = downloadTask.taskDescription,
-              let model = WhisperModel(rawValue: modelRaw) else {
+              let model = WhisperModelSize(rawValue: modelRaw) else {
             return
         }
 
@@ -301,7 +301,7 @@ extension ModelDownloadManager: URLSessionDownloadDelegate {
     ) {
         guard let error = error,
               let modelRaw = task.taskDescription,
-              let model = WhisperModel(rawValue: modelRaw) else {
+              let model = WhisperModelSize(rawValue: modelRaw) else {
             return
         }
 
