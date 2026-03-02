@@ -74,7 +74,8 @@ struct AudioLevelSample {
 /// Usage:
 /// ```swift
 /// let service = AudioCaptureService()
-/// try await service.requestPermission()
+/// let granted = await service.requestPermission()
+/// guard granted else { return }
 /// try service.startRecording()
 /// // ... recording ...
 /// let buffer = service.stopRecording()
@@ -119,6 +120,7 @@ final class AudioCaptureService: ObservableObject {
     /// Timer for tracking recording duration.
     private var durationTimer: Timer?
     private var recordingStartTime: Date?
+    private var accumulatedDuration: TimeInterval = 0
 
     // MARK: - Audio Level Metering
 
@@ -181,7 +183,7 @@ final class AudioCaptureService: ObservableObject {
     /// - Throws: `AudioCaptureError` if permission is denied, engine setup
     ///   fails, or recording is already in progress.
     func startRecording() throws {
-        guard state != .recording else {
+        guard state != .recording, state != .interrupted else {
             throw AudioCaptureError.alreadyRecording
         }
 
@@ -398,15 +400,18 @@ final class AudioCaptureService: ObservableObject {
         durationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let start = self.recordingStartTime else { return }
-                self.recordingDuration = Date().timeIntervalSince(start)
+                self.recordingDuration = self.accumulatedDuration + Date().timeIntervalSince(start)
             }
         }
     }
 
-    private func stopDurationTimer() {
+    private func stopDurationTimer(resetStartTime: Bool = true) {
         durationTimer?.invalidate()
         durationTimer = nil
-        recordingStartTime = nil
+        if resetStartTime {
+            recordingStartTime = nil
+            accumulatedDuration = 0
+        }
     }
 
     // MARK: - Interruption Handling
@@ -448,7 +453,8 @@ final class AudioCaptureService: ObservableObject {
                 if self.state == .recording {
                     self.wasRecordingBeforeInterruption = true
                     self.audioEngine.pause()
-                    self.stopDurationTimer()
+                    self.accumulatedDuration = self.recordingDuration
+                    self.stopDurationTimer(resetStartTime: false)
                     self.state = .interrupted
                 }
 
@@ -465,6 +471,7 @@ final class AudioCaptureService: ObservableObject {
                     do {
                         try AVAudioSession.sharedInstance().setActive(true)
                         try self.audioEngine.start()
+                        self.recordingStartTime = Date()
                         self.startDurationTimer()
                         self.state = .recording
                     } catch {
