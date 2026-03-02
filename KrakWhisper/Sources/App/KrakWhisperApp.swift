@@ -1,16 +1,21 @@
 import SwiftUI
 
-/// App entry point for KrakWhisper.
-/// In the Xcode project, this is the @main entry.
-/// When building as a SPM library, @main is excluded.
-#if !SWIFT_PACKAGE
+/// Main entry point for KrakWhisper iOS app.
 @main
-#endif
 struct KrakWhisperApp: App {
+    @StateObject private var downloadManager = ModelDownloadManager.shared
+    @AppStorage("krakwhisper.onboardingComplete") private var onboardingComplete = false
+
     var body: some Scene {
         WindowGroup {
-            RecordingView()
-                .preferredColorScheme(.dark)
+            if onboardingComplete {
+                MainTabView(downloadManager: downloadManager)
+            } else {
+                OnboardingView(
+                    downloadManager: downloadManager,
+                    isOnboardingComplete: $onboardingComplete
+                )
+            }
         }
     }
 }
