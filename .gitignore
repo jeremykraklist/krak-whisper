@@ -21,7 +21,6 @@ Packages/
 *.dSYM
 
 # Models (large binary files — downloaded at runtime)
-# Scoped to model storage paths only
 **/Models/*.bin
 
 # CocoaPods (if ever used)
