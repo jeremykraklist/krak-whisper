@@ -2,42 +2,22 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key>
-    <string>KrakWhisper</string>
-    <key>CFBundleDisplayName</key>
-    <string>KrakWhisper</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.krakowski.krakwhisper</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>LSRequiresIPhoneOS</key>
-    <true/>
-    <key>UILaunchScreen</key>
-    <dict>
-        <key>UIColorName</key>
-        <string>LaunchBackground</string>
-    </dict>
     <key>NSMicrophoneUsageDescription</key>
-    <string>KrakWhisper needs microphone access to record audio for transcription.</string>
+    <string>KrakWhisper needs microphone access to record and transcribe your voice. All audio is processed on-device and never leaves your phone.</string>
     <key>UIBackgroundModes</key>
     <array>
         <string>processing</string>
     </array>
     <key>BGTaskSchedulerPermittedIdentifiers</key>
     <array>
-        <string>com.krakowski.krakwhisper.transcribe</string>
+        <string>com.krakwhisper.model-download</string>
     </array>
-    <key>UISupportedInterfaceOrientations</key>
-    <array>
-        <string>UIInterfaceOrientationPortrait</string>
-    </array>
-    <key>UIRequiredDeviceCapabilities</key>
-    <array>
-        <string>arm64</string>
-    </array>
+    <key>UILaunchScreen</key>
+    <dict>
+        <key>UIImageName</key>
+        <string>LaunchIcon</string>
+        <key>UIColorName</key>
+        <string>LaunchBackground</string>
+    </dict>
 </dict>
 </plist>
