@@ -40,11 +40,13 @@ final class TranscriptionRecord {
         if !title.isEmpty {
             return title
         }
-        let firstLine = text.prefix(60)
-        if firstLine.count < text.count {
-            return firstLine + "…"
+        let firstLine = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        let trimmed = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        let preview = trimmed.prefix(60)
+        if preview.count < trimmed.count {
+            return String(preview) + "…"
         }
-        return String(firstLine)
+        return String(preview)
     }
 
     /// Computed property: parsed tags array.
@@ -103,6 +105,9 @@ final class TranscriptionStore: ObservableObject {
 
     private let modelContext: ModelContext
 
+    /// Last persistence error, surfaced for UI display.
+    @Published var lastError: String?
+
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
     }
@@ -117,7 +122,7 @@ final class TranscriptionStore: ObservableObject {
         modelUsed: String,
         title: String = "",
         tags: String = ""
-    ) -> TranscriptionRecord {
+    ) throws -> TranscriptionRecord {
         let record = TranscriptionRecord(
             text: text,
             duration: duration,
@@ -126,22 +131,22 @@ final class TranscriptionStore: ObservableObject {
             tags: tags
         )
         modelContext.insert(record)
-        try? modelContext.save()
+        try persistOrReport()
         return record
     }
 
     // MARK: - Read
 
     /// Fetch all records sorted by creation date (newest first).
-    func fetchAll() -> [TranscriptionRecord] {
+    func fetchAll() throws -> [TranscriptionRecord] {
         let descriptor = FetchDescriptor<TranscriptionRecord>(
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
-        return (try? modelContext.fetch(descriptor)) ?? []
+        return try modelContext.fetch(descriptor)
     }
 
     /// Search records by text content or title.
-    func search(query: String) -> [TranscriptionRecord] {
+    func search(query: String) throws -> [TranscriptionRecord] {
         let descriptor = FetchDescriptor<TranscriptionRecord>(
             predicate: #Predicate<TranscriptionRecord> { record in
                 record.text.localizedStandardContains(query) ||
@@ -150,85 +155,99 @@ final class TranscriptionStore: ObservableObject {
             },
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
-        return (try? modelContext.fetch(descriptor)) ?? []
+        return try modelContext.fetch(descriptor)
     }
 
     /// Fetch records filtered by model name.
-    func fetchByModel(_ model: String) -> [TranscriptionRecord] {
+    func fetchByModel(_ model: String) throws -> [TranscriptionRecord] {
         let descriptor = FetchDescriptor<TranscriptionRecord>(
             predicate: #Predicate<TranscriptionRecord> { record in
                 record.modelUsed == model
             },
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
-        return (try? modelContext.fetch(descriptor)) ?? []
+        return try modelContext.fetch(descriptor)
     }
 
     /// Fetch favorited records.
-    func fetchFavorites() -> [TranscriptionRecord] {
+    func fetchFavorites() throws -> [TranscriptionRecord] {
         let descriptor = FetchDescriptor<TranscriptionRecord>(
             predicate: #Predicate<TranscriptionRecord> { record in
                 record.isFavorited
             },
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
-        return (try? modelContext.fetch(descriptor)) ?? []
+        return try modelContext.fetch(descriptor)
     }
 
     // MARK: - Update
 
     /// Update the title of a record.
-    func updateTitle(_ record: TranscriptionRecord, title: String) {
+    func updateTitle(_ record: TranscriptionRecord, title: String) throws {
         record.title = title
-        try? modelContext.save()
+        try persistOrReport()
     }
 
     /// Update the tags of a record.
-    func updateTags(_ record: TranscriptionRecord, tags: String) {
+    func updateTags(_ record: TranscriptionRecord, tags: String) throws {
         record.tags = tags
-        try? modelContext.save()
+        try persistOrReport()
     }
 
     /// Toggle favorite status.
-    func toggleFavorite(_ record: TranscriptionRecord) {
+    func toggleFavorite(_ record: TranscriptionRecord) throws {
         record.isFavorited.toggle()
-        try? modelContext.save()
+        try persistOrReport()
     }
 
     // MARK: - Delete
 
     /// Delete a single record.
-    func delete(_ record: TranscriptionRecord) {
+    func delete(_ record: TranscriptionRecord) throws {
         modelContext.delete(record)
-        try? modelContext.save()
+        try persistOrReport()
     }
 
     /// Delete multiple records.
-    func delete(_ records: [TranscriptionRecord]) {
+    func delete(_ records: [TranscriptionRecord]) throws {
         for record in records {
             modelContext.delete(record)
         }
-        try? modelContext.save()
+        try persistOrReport()
     }
 
     /// Delete all records.
-    func deleteAll() {
-        let all = fetchAll()
+    func deleteAll() throws {
+        let all = try fetchAll()
         for record in all {
             modelContext.delete(record)
         }
-        try? modelContext.save()
+        try persistOrReport()
     }
 
     // MARK: - Stats
 
     /// Total number of transcriptions.
-    var totalCount: Int {
-        fetchAll().count
+    func totalCount() throws -> Int {
+        let descriptor = FetchDescriptor<TranscriptionRecord>()
+        return try modelContext.fetchCount(descriptor)
     }
 
     /// Total recording duration across all transcriptions.
-    var totalDuration: TimeInterval {
-        fetchAll().reduce(0) { $0 + $1.duration }
+    func totalDuration() throws -> TimeInterval {
+        try fetchAll().reduce(0) { $0 + $1.duration }
+    }
+
+    // MARK: - Internal
+
+    /// Save context and surface errors via `lastError`.
+    private func persistOrReport() throws {
+        do {
+            try modelContext.save()
+            lastError = nil
+        } catch {
+            lastError = error.localizedDescription
+            throw error
+        }
     }
 }

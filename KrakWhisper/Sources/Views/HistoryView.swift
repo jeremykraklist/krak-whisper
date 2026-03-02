@@ -22,6 +22,8 @@ struct HistoryView: View {
     @State private var selectedRecord: TranscriptionRecord?
     @State private var showingDeleteConfirmation = false
     @State private var recordToDelete: TranscriptionRecord?
+    @State private var showingError = false
+    @State private var errorMessage = ""
 
     /// Filtered records based on search text.
     private var filteredRecords: [TranscriptionRecord] {
@@ -84,6 +86,11 @@ struct HistoryView: View {
             .navigationDestination(item: $selectedRecord) { record in
                 TranscriptionDetailView(record: record)
             }
+            .alert("Error", isPresented: $showingError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(errorMessage)
+            }
         }
     }
 
@@ -94,35 +101,33 @@ struct HistoryView: View {
             ForEach(groupedRecords, id: \.0) { section, sectionRecords in
                 Section(section) {
                     ForEach(sectionRecords) { record in
-                        HistoryRowView(record: record)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                selectedRecord = record
+                        Button(action: { selectedRecord = record }) {
+                            HistoryRowView(record: record)
+                        }
+                        .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                deleteRecord(record)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
                             }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    deleteRecord(record)
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
+                        }
+                        .swipeActions(edge: .leading) {
+                            Button {
+                                toggleFavorite(record)
+                            } label: {
+                                Label(
+                                    record.isFavorited ? "Unfavorite" : "Favorite",
+                                    systemImage: record.isFavorited ? "star.slash" : "star.fill"
+                                )
                             }
-                            .swipeActions(edge: .leading) {
-                                Button {
-                                    record.isFavorited.toggle()
-                                    try? modelContext.save()
-                                } label: {
-                                    Label(
-                                        record.isFavorited ? "Unfavorite" : "Favorite",
-                                        systemImage: record.isFavorited ? "star.slash" : "star.fill"
-                                    )
-                                }
-                                .tint(.yellow)
+                            .tint(.yellow)
 
-                                ShareLink(item: record.text) {
-                                    Label("Share", systemImage: "square.and.arrow.up")
-                                }
-                                .tint(.blue)
+                            ShareLink(item: record.text) {
+                                Label("Share", systemImage: "square.and.arrow.up")
                             }
+                            .tint(.blue)
+                        }
                     }
                 }
             }
@@ -149,7 +154,23 @@ struct HistoryView: View {
     private func deleteRecord(_ record: TranscriptionRecord) {
         withAnimation {
             modelContext.delete(record)
-            try? modelContext.save()
+            do {
+                try modelContext.save()
+            } catch {
+                errorMessage = "Failed to delete: \(error.localizedDescription)"
+                showingError = true
+            }
+        }
+    }
+
+    private func toggleFavorite(_ record: TranscriptionRecord) {
+        record.isFavorited.toggle()
+        do {
+            try modelContext.save()
+        } catch {
+            record.isFavorited.toggle() // revert
+            errorMessage = "Failed to save: \(error.localizedDescription)"
+            showingError = true
         }
     }
 }
@@ -227,6 +248,8 @@ struct TranscriptionDetailView: View {
     @State private var isEditingTags = false
     @State private var editedTags = ""
     @State private var showingShareSheet = false
+    @State private var showingError = false
+    @State private var errorMessage = ""
 
     var body: some View {
         ScrollView {
@@ -253,7 +276,13 @@ struct TranscriptionDetailView: View {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
                     record.isFavorited.toggle()
-                    try? modelContext.save()
+                    do {
+                        try modelContext.save()
+                    } catch {
+                        record.isFavorited.toggle() // revert
+                        errorMessage = "Failed to save: \(error.localizedDescription)"
+                        showingError = true
+                    }
                 } label: {
                     Image(systemName: record.isFavorited ? "star.fill" : "star")
                         .foregroundStyle(record.isFavorited ? .yellow : .secondary)
@@ -292,7 +321,12 @@ struct TranscriptionDetailView: View {
             TextField("Title", text: $editedTitle)
             Button("Save") {
                 record.title = editedTitle
-                try? modelContext.save()
+                do {
+                    try modelContext.save()
+                } catch {
+                    errorMessage = "Failed to save title: \(error.localizedDescription)"
+                    showingError = true
+                }
             }
             Button("Cancel", role: .cancel) {}
         }
@@ -300,9 +334,19 @@ struct TranscriptionDetailView: View {
             TextField("Tags (comma-separated)", text: $editedTags)
             Button("Save") {
                 record.tags = editedTags
-                try? modelContext.save()
+                do {
+                    try modelContext.save()
+                } catch {
+                    errorMessage = "Failed to save tags: \(error.localizedDescription)"
+                    showingError = true
+                }
             }
             Button("Cancel", role: .cancel) {}
+        }
+        .alert("Error", isPresented: $showingError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage)
         }
     }
 
@@ -425,7 +469,7 @@ struct FlowLayout: Layout {
             positions.append(CGPoint(x: currentX, y: currentY))
             lineHeight = max(lineHeight, size.height)
             currentX += size.width + spacing
-            maxX = max(maxX, currentX)
+            maxX = max(maxX, currentX - spacing)
         }
 
         return (CGSize(width: maxX, height: currentY + lineHeight), positions)
