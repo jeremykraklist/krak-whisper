@@ -37,7 +37,7 @@ struct OnboardingView: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
             .animation(.easeInOut, value: currentStep)
         }
-        .background(Color(.systemBackground))
+        .background(Color(Color(.systemBackground)))
     }
 
     // MARK: - Progress Bar
@@ -313,9 +313,3 @@ struct OnboardingView: View {
     }
 }
 
-#Preview {
-    OnboardingView(
-        downloadManager: .shared,
-        isOnboardingComplete: .constant(false)
-    )
-}

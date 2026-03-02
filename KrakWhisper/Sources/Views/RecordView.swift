@@ -47,6 +47,4 @@ struct RecordView: View {
     }
 }
 
-#Preview {
-    RecordView(downloadManager: .shared)
-}
+// Preview requires Xcode — use #Preview in .xcodeproj target only

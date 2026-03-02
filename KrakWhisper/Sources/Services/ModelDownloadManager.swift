@@ -104,7 +104,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
 
     /// Returns the local file URL for a model (whether or not it exists).
     func localURL(for model: WhisperModelSize) -> URL {
-        modelsDirectory.appendingPathComponent(model.filename)
+        modelsDirectory.appendingPathComponent(model.fileName)
     }
 
     /// Whether the model file exists locally and passes validation.
@@ -129,10 +129,10 @@ final class ModelDownloadManager: NSObject, ObservableObject {
             return
         }
 
-        logger.info("Starting download of \(model.rawValue) from \(model.remoteURL)")
+        logger.info("Starting download of \(model.rawValue) from \(model.downloadURL)")
         downloadStates[model] = .downloading(progress: 0.0)
 
-        let task = backgroundSession.downloadTask(with: model.remoteURL)
+        let task = backgroundSession.downloadTask(with: model.downloadURL)
         task.taskDescription = model.rawValue
         activeDownloads[model] = task
         task.resume()

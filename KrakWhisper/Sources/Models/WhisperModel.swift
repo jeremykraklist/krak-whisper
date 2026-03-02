@@ -36,6 +36,21 @@ public enum WhisperModelSize: String, CaseIterable, Identifiable, Sendable {
         URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/\(fileName)")!
     }
 
+    /// Alias for compatibility with ModelDownloadManager.
+    public var expectedFileSize: Int64 { approximateSize }
+
+    /// 5% tolerance for file size validation after download.
+    public var fileSizeTolerance: Int64 { Int64(Double(approximateSize) * 0.05) }
+
+    /// Subtitle for UI display (speed + accuracy description).
+    public var subtitle: String {
+        switch self {
+        case .tiny: return "Fastest · Lower accuracy"
+        case .base: return "Balanced · Recommended"
+        case .small: return "Slowest · Highest accuracy"
+        }
+    }
+
     /// The default recommended model.
     public static let defaultModel: WhisperModelSize = .base
 }
