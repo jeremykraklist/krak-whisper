@@ -33,3 +33,4 @@ electron/bin/*.exe
 electron/bin/*.bin
 !electron/bin/.gitkeep
 npm-debug.log*
+.worktrees/
