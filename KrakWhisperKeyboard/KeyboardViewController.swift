@@ -1,36 +1,30 @@
 #if os(iOS)
 import UIKit
-import SwiftUI
 import AVFoundation
 import SwiftWhisper
 
-// MARK: - State Types
-
-enum KeyboardState: Equatable {
-    case idle
-    case recording
-    case transcribing
-    case completed(String)
-    case error(String)
-    case noModel
-}
-
-enum KeyboardMode: Equatable {
-    case voice
-    case text
-}
-
-// MARK: - KeyboardViewController
+// MARK: - KeyboardViewController (Pure UIKit — no SwiftUI)
 
 final class KeyboardViewController: UIInputViewController {
     
-    private var hostingController: UIHostingController<AnyView>?
-    private var heightConstraint: NSLayoutConstraint?
+    // MARK: - State
     
-    private var keyboardState: KeyboardState = .idle
-    private var keyboardMode: KeyboardMode = .voice
-    private var isShifted = false
-    private var transcribedText: String = ""
+    private enum RecordingState {
+        case idle
+        case recording
+        case transcribing
+    }
+    
+    private enum KeyboardPage {
+        case letters
+        case numbers
+        case symbols
+    }
+    
+    private var recordingState: RecordingState = .idle
+    private var keyboardPage: KeyboardPage = .letters
+    private var isShifted = true // Start shifted for first letter
+    private var transcribedText = ""
     private var recordingDuration: TimeInterval = 0
     
     // Audio
@@ -44,6 +38,30 @@ final class KeyboardViewController: UIInputViewController {
     private let transcriptionService = WhisperTranscriptionService()
     private var isModelLoaded = false
     
+    // MARK: - UI Elements
+    
+    private let containerView = UIView()
+    private var keyRows: [UIStackView] = []
+    private let statusLabel = UILabel()
+    private let micButton = UIButton(type: .system)
+    
+    // Key definitions
+    private let letterRows = [
+        ["q","w","e","r","t","y","u","i","o","p"],
+        ["a","s","d","f","g","h","j","k","l"],
+        ["z","x","c","v","b","n","m"]
+    ]
+    private let numberRows = [
+        ["1","2","3","4","5","6","7","8","9","0"],
+        ["-","/",":",";","(",")","$","&","@","\""],
+        [".",",","?","!","\'"]
+    ]
+    private let symbolRows = [
+        ["[","]","{","}","#","%","^","*","+","="],
+        ["_","\\","|","~","<",">","€","£","¥","·"],
+        [".",",","?","!","\'"]
+    ]
+    
     // MARK: - Lifecycle
     
     override func viewDidLoad() {
@@ -52,7 +70,7 @@ final class KeyboardViewController: UIInputViewController {
         guard let inputView = self.inputView else { return }
         inputView.allowsSelfSizing = true
         
-        setupHostingController()
+        setupKeyboard()
         loadModelIfAvailable()
     }
     
@@ -63,66 +81,327 @@ final class KeyboardViewController: UIInputViewController {
     
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        if keyboardState == .recording { cancelRecording() }
+        if recordingState == .recording { cancelRecording() }
     }
     
-    // MARK: - Setup
+    // MARK: - Keyboard Setup
     
-    private func setupHostingController() {
-        let hosting = UIHostingController(rootView: AnyView(buildView()))
-        hosting.view.translatesAutoresizingMaskIntoConstraints = false
-        hosting.view.backgroundColor = .clear
-        // Disable safe area to prevent layout issues in keyboard extensions
-        hosting.additionalSafeAreaInsets = .zero
-        
-        addChild(hosting)
-        view.addSubview(hosting.view)
-        hosting.didMove(toParent: self)
-        
-        let height = hosting.view.heightAnchor.constraint(equalToConstant: 200)
-        heightConstraint = height
+    private func setupKeyboard() {
+        containerView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(containerView)
         
         NSLayoutConstraint.activate([
-            hosting.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            hosting.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            hosting.view.topAnchor.constraint(equalTo: view.topAnchor),
-            height,
+            containerView.topAnchor.constraint(equalTo: view.topAnchor),
+            containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            containerView.heightAnchor.constraint(equalToConstant: 260),
         ])
         
-        hostingController = hosting
+        // Status bar at top
+        statusLabel.font = .systemFont(ofSize: 11)
+        statusLabel.textColor = .secondaryLabel
+        statusLabel.textAlignment = .center
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(statusLabel)
+        
+        NSLayoutConstraint.activate([
+            statusLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 2),
+            statusLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
+            statusLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8),
+            statusLabel.heightAnchor.constraint(equalToConstant: 16),
+        ])
+        
+        buildKeyRows()
     }
     
-    private func refreshView() {
-        hostingController?.rootView = AnyView(buildView())
+    private func buildKeyRows() {
+        // Remove old rows
+        keyRows.forEach { $0.removeFromSuperview() }
+        keyRows.removeAll()
+        
+        let rows: [[String]]
+        switch keyboardPage {
+        case .letters: rows = letterRows
+        case .numbers: rows = numberRows
+        case .symbols: rows = symbolRows
+        }
+        
+        var previousAnchor = statusLabel.bottomAnchor
+        let rowHeight: CGFloat = 42
+        let spacing: CGFloat = 6
+        let sidePadding: CGFloat = 3
+        
+        // Key rows
+        for (index, keys) in rows.enumerated() {
+            let rowStack = UIStackView()
+            rowStack.axis = .horizontal
+            rowStack.spacing = 4
+            rowStack.distribution = .fillEqually
+            rowStack.translatesAutoresizingMaskIntoConstraints = false
+            containerView.addSubview(rowStack)
+            
+            // Add shift key to left of row 3 (letters mode)
+            if index == 2 && keyboardPage == .letters {
+                let shiftBtn = makeSpecialKey(
+                    title: nil,
+                    image: UIImage(systemName: isShifted ? "shift.fill" : "shift"),
+                    action: #selector(shiftTapped)
+                )
+                shiftBtn.widthAnchor.constraint(equalToConstant: 40).isActive = true
+                rowStack.addArrangedSubview(shiftBtn)
+            }
+            
+            // Add symbol toggle for row 3 in numbers/symbols mode
+            if index == 2 && keyboardPage != .letters {
+                let toggleTitle = keyboardPage == .numbers ? "#+=" : "123"
+                let toggleBtn = makeSpecialKey(title: toggleTitle, image: nil, action: #selector(symbolToggleTapped))
+                toggleBtn.widthAnchor.constraint(equalToConstant: 44).isActive = true
+                rowStack.addArrangedSubview(toggleBtn)
+            }
+            
+            for key in keys {
+                let btn = makeKeyButton(title: key)
+                rowStack.addArrangedSubview(btn)
+            }
+            
+            // Add backspace to right of row 3
+            if index == 2 {
+                let deleteBtn = makeSpecialKey(
+                    title: nil,
+                    image: UIImage(systemName: "delete.left"),
+                    action: #selector(backspaceTapped)
+                )
+                deleteBtn.widthAnchor.constraint(equalToConstant: 40).isActive = true
+                rowStack.addArrangedSubview(deleteBtn)
+            }
+            
+            NSLayoutConstraint.activate([
+                rowStack.topAnchor.constraint(equalTo: previousAnchor, constant: spacing),
+                rowStack.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: sidePadding),
+                rowStack.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -sidePadding),
+                rowStack.heightAnchor.constraint(equalToConstant: rowHeight),
+            ])
+            
+            keyRows.append(rowStack)
+            previousAnchor = rowStack.bottomAnchor
+        }
+        
+        // Bottom row: globe, 123/ABC, mic, space, return
+        let bottomRow = UIStackView()
+        bottomRow.axis = .horizontal
+        bottomRow.spacing = 4
+        bottomRow.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(bottomRow)
+        
+        // Globe
+        let globeBtn = makeSpecialKey(title: nil, image: UIImage(systemName: "globe"), action: #selector(globeTapped))
+        globeBtn.widthAnchor.constraint(equalToConstant: 40).isActive = true
+        bottomRow.addArrangedSubview(globeBtn)
+        
+        // 123/ABC toggle
+        let pageTitle = keyboardPage == .letters ? "123" : "ABC"
+        let pageBtn = makeSpecialKey(title: pageTitle, image: nil, action: #selector(pageToggleTapped))
+        pageBtn.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        bottomRow.addArrangedSubview(pageBtn)
+        
+        // Mic button
+        micButton.removeTarget(nil, action: nil, for: .allEvents)
+        configureMicButton()
+        micButton.widthAnchor.constraint(equalToConstant: 40).isActive = true
+        bottomRow.addArrangedSubview(micButton)
+        
+        // Space bar
+        let spaceBtn = UIButton(type: .system)
+        spaceBtn.setTitle("space", for: .normal)
+        spaceBtn.titleLabel?.font = .systemFont(ofSize: 15)
+        spaceBtn.backgroundColor = UIColor.systemGray5
+        spaceBtn.setTitleColor(.label, for: .normal)
+        spaceBtn.layer.cornerRadius = 5
+        spaceBtn.addTarget(self, action: #selector(spaceTapped), for: .touchUpInside)
+        spaceBtn.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        bottomRow.addArrangedSubview(spaceBtn)
+        
+        // Return
+        let returnBtn = makeSpecialKey(title: "return", image: nil, action: #selector(returnTapped))
+        returnBtn.backgroundColor = UIColor.systemGray4
+        returnBtn.widthAnchor.constraint(equalToConstant: 72).isActive = true
+        bottomRow.addArrangedSubview(returnBtn)
+        
+        NSLayoutConstraint.activate([
+            bottomRow.topAnchor.constraint(equalTo: previousAnchor, constant: spacing),
+            bottomRow.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: sidePadding),
+            bottomRow.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -sidePadding),
+            bottomRow.heightAnchor.constraint(equalToConstant: rowHeight),
+        ])
+        
+        keyRows.append(bottomRow)
+        updateStatusLabel()
     }
     
-    private func buildView() -> some View {
-        VoiceKeyboardView(
-            state: keyboardState,
-            transcribedText: transcribedText,
-            recordingDuration: recordingDuration,
-            modelName: SharedModelManager.keyboardModelSize.rawValue,
-            onMicTap: { [weak self] in self?.handleMicTap() },
-            onInsert: { [weak self] in self?.insertTranscription() },
-            onBackspace: { [weak self] in self?.textDocumentProxy.deleteBackward() },
-            onGlobe: { [weak self] in self?.advanceToNextInputMode() },
-            onClear: { [weak self] in self?.clearTranscription() }
-        )
+    // MARK: - Key Factory
+    
+    private func makeKeyButton(title: String) -> UIButton {
+        let btn = UIButton(type: .system)
+        let displayTitle = (keyboardPage == .letters && isShifted) ? title.uppercased() : title
+        btn.setTitle(displayTitle, for: .normal)
+        btn.titleLabel?.font = .systemFont(ofSize: 22)
+        btn.backgroundColor = UIColor.systemGray5
+        btn.setTitleColor(.label, for: .normal)
+        btn.layer.cornerRadius = 5
+        btn.layer.shadowColor = UIColor.black.cgColor
+        btn.layer.shadowOffset = CGSize(width: 0, height: 1)
+        btn.layer.shadowOpacity = 0.15
+        btn.layer.shadowRadius = 0.5
+        btn.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
+        return btn
+    }
+    
+    private func makeSpecialKey(title: String?, image: UIImage?, action: Selector) -> UIButton {
+        let btn = UIButton(type: .system)
+        if let title { btn.setTitle(title, for: .normal); btn.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium) }
+        if let image { btn.setImage(image, for: .normal) }
+        btn.backgroundColor = UIColor.systemGray3
+        btn.tintColor = .label
+        btn.layer.cornerRadius = 5
+        btn.addTarget(self, action: action, for: .touchUpInside)
+        return btn
+    }
+    
+    private func configureMicButton() {
+        switch recordingState {
+        case .idle:
+            micButton.setImage(UIImage(systemName: "mic.fill"), for: .normal)
+            micButton.backgroundColor = UIColor.systemGray3
+            micButton.tintColor = .label
+        case .recording:
+            micButton.setImage(UIImage(systemName: "stop.fill"), for: .normal)
+            micButton.backgroundColor = UIColor.systemRed
+            micButton.tintColor = .white
+        case .transcribing:
+            micButton.setImage(UIImage(systemName: "waveform"), for: .normal)
+            micButton.backgroundColor = UIColor.systemBlue
+            micButton.tintColor = .white
+        }
+        micButton.layer.cornerRadius = 5
+        micButton.addTarget(self, action: #selector(micTapped), for: .touchUpInside)
+    }
+    
+    private func updateStatusLabel() {
+        switch recordingState {
+        case .idle:
+            if !transcribedText.isEmpty {
+                statusLabel.text = "✓ Transcribed — tap to insert"
+                statusLabel.textColor = .systemGreen
+            } else if !isModelLoaded {
+                statusLabel.text = "Open KrakWhisper to download model"
+                statusLabel.textColor = .systemOrange
+            } else {
+                let model = SharedModelManager.keyboardModelSize.rawValue
+                statusLabel.text = "KrakWhisper · \(model)"
+                statusLabel.textColor = .secondaryLabel
+            }
+        case .recording:
+            statusLabel.text = String(format: "Recording · %.1fs", recordingDuration)
+            statusLabel.textColor = .systemRed
+        case .transcribing:
+            statusLabel.text = "Transcribing..."
+            statusLabel.textColor = .systemBlue
+        }
+    }
+    
+    // MARK: - Key Actions
+    
+    @objc private func keyTapped(_ sender: UIButton) {
+        guard let title = sender.title(for: .normal) else { return }
+        
+        // If we have transcribed text waiting, insert it first
+        if !transcribedText.isEmpty {
+            textDocumentProxy.insertText(transcribedText)
+            transcribedText = ""
+        }
+        
+        textDocumentProxy.insertText(title)
+        
+        // Auto-unshift after typing a letter
+        if keyboardPage == .letters && isShifted {
+            isShifted = false
+            buildKeyRows()
+        }
+    }
+    
+    @objc private func shiftTapped() {
+        isShifted.toggle()
+        buildKeyRows()
+    }
+    
+    @objc private func backspaceTapped() {
+        if !transcribedText.isEmpty {
+            transcribedText = ""
+            updateStatusLabel()
+        } else {
+            textDocumentProxy.deleteBackward()
+        }
+    }
+    
+    @objc private func spaceTapped() {
+        if !transcribedText.isEmpty {
+            textDocumentProxy.insertText(transcribedText)
+            transcribedText = ""
+            updateStatusLabel()
+        }
+        textDocumentProxy.insertText(" ")
+    }
+    
+    @objc private func returnTapped() {
+        if !transcribedText.isEmpty {
+            textDocumentProxy.insertText(transcribedText)
+            transcribedText = ""
+            updateStatusLabel()
+        }
+        textDocumentProxy.insertText("\n")
+    }
+    
+    @objc private func globeTapped() {
+        advanceToNextInputMode()
+    }
+    
+    @objc private func pageToggleTapped() {
+        keyboardPage = (keyboardPage == .letters) ? .numbers : .letters
+        buildKeyRows()
+    }
+    
+    @objc private func symbolToggleTapped() {
+        keyboardPage = (keyboardPage == .numbers) ? .symbols : .numbers
+        buildKeyRows()
+    }
+    
+    @objc private func micTapped() {
+        switch recordingState {
+        case .idle:
+            if !transcribedText.isEmpty {
+                // Insert existing transcription and start new recording
+                textDocumentProxy.insertText(transcribedText)
+                transcribedText = ""
+            }
+            startRecording()
+        case .recording:
+            stopRecordingAndTranscribe()
+        case .transcribing:
+            break
+        }
     }
     
     // MARK: - Model Loading
     
     private func loadModelIfAvailable() {
         guard SharedModelManager.hasAnyModel else {
-            keyboardState = .noModel
-            refreshView()
+            updateStatusLabel()
             return
         }
         
         let modelSize = SharedModelManager.keyboardModelSize
         guard let modelURL = SharedModelManager.modelURL(for: modelSize) else {
-            keyboardState = .noModel
-            refreshView()
+            updateStatusLabel()
             return
         }
         
@@ -130,34 +409,20 @@ final class KeyboardViewController: UIInputViewController {
             do {
                 try await transcriptionService.loadModel(from: modelURL, size: modelSize)
                 isModelLoaded = true
-                if keyboardState == .noModel {
-                    keyboardState = .idle
-                    refreshView()
-                }
+                updateStatusLabel()
             } catch {
-                keyboardState = .error("Model load failed")
-                refreshView()
+                statusLabel.text = "Model load failed"
+                statusLabel.textColor = .systemRed
             }
         }
     }
     
-    // MARK: - Mic Actions
-    
-    private func handleMicTap() {
-        switch keyboardState {
-        case .recording:
-            stopRecordingAndTranscribe()
-        case .idle, .completed, .error:
-            startRecording()
-        default:
-            break
-        }
-    }
+    // MARK: - Recording
     
     private func startRecording() {
         guard isModelLoaded else {
-            keyboardState = .error("No model loaded")
-            refreshView()
+            statusLabel.text = "No model loaded"
+            statusLabel.textColor = .systemRed
             return
         }
         
@@ -166,8 +431,8 @@ final class KeyboardViewController: UIInputViewController {
             await MainActor.run {
                 if granted { beginAudioCapture() }
                 else {
-                    keyboardState = .error("Mic access denied")
-                    refreshView()
+                    statusLabel.text = "Mic access denied"
+                    statusLabel.textColor = .systemRed
                 }
             }
         }
@@ -176,7 +441,6 @@ final class KeyboardViewController: UIInputViewController {
     private func beginAudioCapture() {
         recordedFrames = []
         recordingDuration = 0
-        transcribedText = ""
         
         let session = AVAudioSession.sharedInstance()
         do {
@@ -184,8 +448,8 @@ final class KeyboardViewController: UIInputViewController {
             try session.setPreferredSampleRate(sampleRate)
             try session.setActive(true, options: [])
         } catch {
-            keyboardState = .error("Audio error")
-            refreshView()
+            statusLabel.text = "Audio error"
+            statusLabel.textColor = .systemRed
             return
         }
         
@@ -198,11 +462,7 @@ final class KeyboardViewController: UIInputViewController {
             sampleRate: sampleRate,
             channels: 1,
             interleaved: false
-        ) else {
-            keyboardState = .error("Format error")
-            refreshView()
-            return
-        }
+        ) else { return }
         
         let converter = AVAudioConverter(from: inputFormat, to: desiredFormat)
         
@@ -237,22 +497,22 @@ final class KeyboardViewController: UIInputViewController {
         do {
             try engine.start()
             audioEngine = engine
-            keyboardState = .recording
-            refreshView()
+            recordingState = .recording
+            configureMicButton()
             
             durationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
                 DispatchQueue.main.async {
-                    guard let self, self.keyboardState == .recording else { return }
+                    guard let self, self.recordingState == .recording else { return }
                     self.recordingDuration += 0.1
-                    self.refreshView()
+                    self.updateStatusLabel()
                     if self.recordingDuration >= self.maxRecordingDuration {
                         self.stopRecordingAndTranscribe()
                     }
                 }
             }
         } catch {
-            keyboardState = .error("Mic start failed")
-            refreshView()
+            statusLabel.text = "Mic start failed"
+            statusLabel.textColor = .systemRed
         }
     }
     
@@ -266,23 +526,35 @@ final class KeyboardViewController: UIInputViewController {
         
         let frames = recordedFrames
         guard !frames.isEmpty else {
-            keyboardState = .error("No audio")
-            refreshView()
+            statusLabel.text = "No audio"
+            statusLabel.textColor = .systemRed
+            recordingState = .idle
+            configureMicButton()
             return
         }
         
-        keyboardState = .transcribing
-        refreshView()
+        recordingState = .transcribing
+        configureMicButton()
+        updateStatusLabel()
         
         Task {
             do {
                 let result = try await transcriptionService.transcribe(audioFrames: frames)
                 transcribedText = result.text
-                keyboardState = .completed(result.text)
-                refreshView()
+                recordingState = .idle
+                configureMicButton()
+                
+                // Auto-insert the transcription
+                if !result.text.isEmpty {
+                    textDocumentProxy.insertText(result.text)
+                    transcribedText = ""
+                }
+                updateStatusLabel()
             } catch {
-                keyboardState = .error("Failed")
-                refreshView()
+                statusLabel.text = "Transcription failed"
+                statusLabel.textColor = .systemRed
+                recordingState = .idle
+                configureMicButton()
             }
         }
     }
@@ -295,178 +567,9 @@ final class KeyboardViewController: UIInputViewController {
         durationTimer = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         recordedFrames = []
-        keyboardState = .idle
-        refreshView()
-    }
-    
-    private func insertTranscription() {
-        guard !transcribedText.isEmpty else { return }
-        textDocumentProxy.insertText(transcribedText)
-        clearTranscription()
-    }
-    
-    private func clearTranscription() {
-        transcribedText = ""
-        recordedFrames = []
-        recordingDuration = 0
-        keyboardState = .idle
-        refreshView()
-    }
-}
-
-// MARK: - SwiftUI Voice Keyboard View
-
-struct VoiceKeyboardView: View {
-    let state: KeyboardState
-    let transcribedText: String
-    let recordingDuration: TimeInterval
-    let modelName: String
-    
-    let onMicTap: () -> Void
-    let onInsert: () -> Void
-    let onBackspace: () -> Void
-    let onGlobe: () -> Void
-    let onClear: () -> Void
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // Top: status + preview
-            topSection
-                .frame(height: 80)
-                .padding(.horizontal, 8)
-                .padding(.top, 4)
-            
-            Spacer(minLength: 4)
-            
-            // Bottom: controls
-            bottomControls
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-        }
-        .frame(height: 200)
-        .background(Color(uiColor: .systemBackground).opacity(0.95))
-    }
-    
-    // MARK: - Top Section
-    
-    private var topSection: some View {
-        VStack(spacing: 4) {
-            // Status text
-            statusText
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            // Preview area
-            if case .completed(let text) = state {
-                Text(text)
-                    .font(.body)
-                    .lineLimit(3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else if state == .recording {
-                Text(String(format: "%.1fs", recordingDuration))
-                    .font(.system(.title2, design: .monospaced))
-                    .foregroundColor(.red)
-            } else if state == .transcribing {
-                ProgressView()
-                    .progressViewStyle(.circular)
-            } else if state == .noModel {
-                Text("Open KrakWhisper app to download a model")
-                    .font(.caption)
-                    .foregroundColor(.orange)
-                    .multilineTextAlignment(.center)
-            }
-        }
-    }
-    
-    @ViewBuilder
-    private var statusText: some View {
-        switch state {
-        case .idle: Text("Tap mic to dictate · \(modelName)")
-        case .recording: Text("Recording...")
-        case .transcribing: Text("Transcribing...")
-        case .completed: Text("Done ✓ Tap Insert or mic again")
-        case .error(let msg): Text("⚠ \(msg)").foregroundColor(.red)
-        case .noModel: Text("No model available")
-        }
-    }
-    
-    // MARK: - Bottom Controls
-    
-    private var bottomControls: some View {
-        HStack(spacing: 16) {
-            // Globe button
-            Button(action: onGlobe) {
-                Image(systemName: "globe")
-                    .font(.title3)
-                    .foregroundColor(.primary)
-                    .frame(width: 36, height: 36)
-            }
-            
-            // Backspace
-            Button(action: onBackspace) {
-                Image(systemName: "delete.left")
-                    .font(.title3)
-                    .foregroundColor(.primary)
-                    .frame(width: 36, height: 36)
-            }
-            
-            Spacer()
-            
-            // Main mic button
-            Button(action: onMicTap) {
-                ZStack {
-                    Circle()
-                        .fill(micColor)
-                        .frame(width: 56, height: 56)
-                    
-                    Image(systemName: micIcon)
-                        .font(.title2)
-                        .foregroundColor(.white)
-                }
-            }
-            .disabled(state == .noModel || state == .transcribing)
-            
-            Spacer()
-            
-            // Clear button (visible when completed)
-            if case .completed = state {
-                Button(action: onClear) {
-                    Text("Clear")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .frame(width: 44, height: 36)
-                }
-            }
-            
-            // Insert button (visible when completed)
-            if case .completed = state {
-                Button(action: onInsert) {
-                    Text("Insert")
-                        .font(.caption.bold())
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.blue)
-                        .cornerRadius(8)
-                }
-            }
-        }
-    }
-    
-    private var micColor: Color {
-        switch state {
-        case .recording: return .gray
-        case .transcribing: return .blue
-        default: return .red
-        }
-    }
-    
-    private var micIcon: String {
-        switch state {
-        case .recording: return "stop.fill"
-        case .transcribing: return "waveform"
-        default: return "mic.fill"
-        }
+        recordingState = .idle
+        configureMicButton()
+        updateStatusLabel()
     }
 }
 #endif
