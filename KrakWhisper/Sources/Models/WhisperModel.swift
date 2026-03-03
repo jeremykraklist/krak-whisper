@@ -31,9 +31,9 @@ public enum WhisperModelSize: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Hugging Face download URL for this model.
+    /// Direct download URL hosted on our CDN (no redirects).
     public var downloadURL: URL {
-        URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/\(fileName)")!
+        URL(string: "https://new.jeremiahkrakowski.com/models/\(fileName)")!
     }
 
     /// Alias for compatibility with ModelDownloadManager.

@@ -57,11 +57,11 @@ public final class ModelDownloadManager: NSObject, ObservableObject {
 
     /// Background URL session for downloads
     private lazy var backgroundSession: URLSession = {
-        let config = URLSessionConfiguration.background(withIdentifier: Self.backgroundSessionID)
-        config.isDiscretionary = false
-        config.sessionSendsLaunchEvents = true
+        let config = URLSessionConfiguration.default
         config.allowsExpensiveNetworkAccess = true
         config.allowsConstrainedNetworkAccess = true
+        config.timeoutIntervalForRequest = 300
+        config.timeoutIntervalForResource = 3600
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
 
@@ -339,24 +339,35 @@ extension ModelDownloadManager: URLSessionDownloadDelegate {
             return
         }
 
+        // MUST move file synchronously before this method returns,
+        // because URLSession deletes the temp file after the callback.
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let modelsDir = documentsURL.appendingPathComponent("Models", isDirectory: true)
+        let destinationURL = modelsDir.appendingPathComponent(model.fileName)
+
+        do {
+            try FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                try FileManager.default.removeItem(at: destinationURL)
+            }
+            try FileManager.default.moveItem(at: location, to: destinationURL)
+        } catch {
+            Task { @MainActor in
+                self.downloadStates[model] = .failed(message: error.localizedDescription)
+            }
+            return
+        }
+
         Task { @MainActor in
-            downloadStates[model] = .validating
             activeDownloads.removeValue(forKey: model)
 
-            do {
-                try moveDownloadedFile(from: location, for: model)
-
-                if validateModelFile(model) {
-                    downloadStates[model] = .downloaded
-                    logger.info("Successfully downloaded and validated \(model.rawValue)")
-                } else {
-                    try? FileManager.default.removeItem(at: localURL(for: model))
-                    downloadStates[model] = .failed(message: "Validation failed — file size mismatch")
-                    logger.error("Validation failed for \(model.rawValue)")
-                }
-            } catch {
-                downloadStates[model] = .failed(message: error.localizedDescription)
-                logger.error("Failed to save \(model.rawValue): \(error.localizedDescription)")
+            if validateModelFile(model) {
+                downloadStates[model] = .downloaded
+                logger.info("Successfully downloaded and validated \(model.rawValue)")
+            } else {
+                try? FileManager.default.removeItem(at: localURL(for: model))
+                downloadStates[model] = .failed(message: "Validation failed — file size mismatch")
+                logger.error("Validation failed for \(model.rawValue)")
             }
         }
     }

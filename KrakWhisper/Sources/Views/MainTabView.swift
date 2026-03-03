@@ -7,7 +7,7 @@ struct MainTabView: View {
 
     var body: some View {
         TabView {
-            RecordView(downloadManager: downloadManager)
+            RecordingView()
                 .tabItem {
                     Label("Record", systemImage: "mic.fill")
                 }

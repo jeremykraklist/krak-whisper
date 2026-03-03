@@ -12,17 +12,17 @@ struct ModelDownloadRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            // Selection indicator
+            if state == .downloaded {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? .green : .secondary)
+                    .font(.title3)
+            }
+
             // Model info
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(model.displayName)
-                        .font(.headline)
-                    if isSelected && state == .downloaded {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .font(.subheadline)
-                    }
-                }
+                Text(model.displayName)
+                    .font(.headline)
                 Text(model.subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -37,6 +37,12 @@ struct ModelDownloadRow: View {
             stateView
         }
         .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if state == .downloaded {
+                onSelect()
+            }
+        }
     }
 
     @ViewBuilder
