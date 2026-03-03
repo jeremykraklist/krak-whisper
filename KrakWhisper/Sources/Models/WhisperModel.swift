@@ -5,6 +5,7 @@ public enum WhisperModelSize: String, CaseIterable, Identifiable, Sendable {
     case tiny = "tiny.en"
     case base = "base.en"
     case small = "small.en"
+    case medium = "medium.en"
 
     public var id: String { rawValue }
 
@@ -14,6 +15,7 @@ public enum WhisperModelSize: String, CaseIterable, Identifiable, Sendable {
         case .tiny: return "Tiny (75 MB)"
         case .base: return "Base (142 MB)"
         case .small: return "Small (466 MB)"
+        case .medium: return "Medium (1.5 GB)"
         }
     }
 
@@ -28,6 +30,7 @@ public enum WhisperModelSize: String, CaseIterable, Identifiable, Sendable {
         case .tiny: return 77_691_713
         case .base: return 147_951_465
         case .small: return 487_601_967
+        case .medium: return 1_533_774_781
         }
     }
 
@@ -42,11 +45,10 @@ public enum WhisperModelSize: String, CaseIterable, Identifiable, Sendable {
     /// 5% tolerance for file size validation after download.
     public var fileSizeTolerance: Int64 { Int64(Double(approximateSize) * 0.05) }
 
-    /// Subtitle for UI display (speed + accuracy description).
     /// Human-readable file size string.
     public var fileSizeDescription: String {
         let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useMB]
+        formatter.allowedUnits = [.useMB, .useGB]
         formatter.countStyle = .file
         return formatter.string(fromByteCount: approximateSize)
     }
@@ -55,7 +57,8 @@ public enum WhisperModelSize: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .tiny: return "Fastest · Lower accuracy"
         case .base: return "Balanced · Recommended"
-        case .small: return "Slowest · Highest accuracy"
+        case .small: return "Accurate · Good for most use"
+        case .medium: return "Best accuracy · Uses more storage"
         }
     }
 
