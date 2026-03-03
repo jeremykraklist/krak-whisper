@@ -513,10 +513,6 @@ struct TranscriptionDetailView: View {
     }
 
     private var textSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Transcription")
-                .font(.headline)
-                .foregroundStyle(.secondary)
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(showingCleanedText && record.cleanedText != nil ? "Cleaned Transcription" : "Transcription")
