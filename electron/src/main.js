@@ -85,8 +85,8 @@ function createWidget() {
   const savedY = store.get('widgetY', display.workArea.height / 2);
 
   widgetWindow = new BrowserWindow({
-    width: 56,
-    height: 76, // Extra space for duration label
+    width: 64,
+    height: 96, // Drag handle (16) + widget (56) + duration label (24)
     x: Math.round(savedX),
     y: Math.round(savedY),
     frame: false,
@@ -95,6 +95,7 @@ function createWidget() {
     resizable: false,
     skipTaskbar: true,
     hasShadow: false,
+    focusable: false, // CRITICAL: don't steal focus from target app
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -285,9 +286,28 @@ function createSettingsWindow() {
 function simulatePaste() {
   if (process.platform !== 'win32') return;
 
-  // Small delay to let the clipboard settle, then simulate Ctrl+V
+  // Use keybd_event which works even when our window isn't focused.
+  // Simulates Ctrl+V at the OS level — goes to whatever app has focus.
   setTimeout(() => {
-    const psScript = `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')`;
+    const psScript = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class KBSim {
+  [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+  public const byte VK_CONTROL = 0x11;
+  public const byte VK_V = 0x56;
+  public const uint KEYEVENTF_KEYUP = 0x0002;
+  public static void Paste() {
+    keybd_event(VK_CONTROL, 0, 0, UIntPtr.Zero);
+    keybd_event(VK_V, 0, 0, UIntPtr.Zero);
+    keybd_event(VK_V, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+    keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+  }
+}
+"@
+[KBSim]::Paste()
+`;
     execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
       timeout: 5000,
     }, (err) => {
@@ -295,7 +315,7 @@ function simulatePaste() {
         console.error('Auto-paste failed:', err.message);
       }
     });
-  }, 150);
+  }, 200);
 }
 
 // ─── Recording ───────────────────────────────────────────────────────

@@ -6,24 +6,56 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     
     html, body {
-      width: 56px;
-      height: 56px;
-      overflow: hidden;
+      width: 64px;
+      height: 80px;
+      overflow: visible;
       background: transparent;
-      -webkit-app-region: drag;
       user-select: none;
+    }
+
+    /* Drag handle at top */
+    .drag-handle {
+      width: 64px;
+      height: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-app-region: drag;
+      cursor: grab;
+    }
+
+    .drag-dots {
+      width: 20px;
+      height: 4px;
+      display: flex;
+      gap: 3px;
+      justify-content: center;
+      opacity: 0.3;
+      transition: opacity 0.2s;
+    }
+
+    .drag-handle:hover .drag-dots {
+      opacity: 0.7;
+    }
+
+    .drag-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: white;
     }
 
     .widget {
       width: 56px;
       height: 56px;
+      margin: 0 auto;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
       transition: all 0.2s ease;
-      -webkit-app-region: drag;
+      -webkit-app-region: no-drag;
       position: relative;
     }
 
@@ -66,7 +98,6 @@
       width: 24px;
       height: 24px;
       fill: white;
-      -webkit-app-region: no-drag;
       pointer-events: none;
     }
 
@@ -110,11 +141,19 @@
       padding: 1px 6px;
       border-radius: 4px;
       white-space: nowrap;
-      -webkit-app-region: no-drag;
     }
   </style>
 </head>
 <body>
+  <!-- Drag handle: grab here to move the widget -->
+  <div class="drag-handle">
+    <div class="drag-dots">
+      <div class="drag-dot"></div>
+      <div class="drag-dot"></div>
+      <div class="drag-dot"></div>
+    </div>
+  </div>
+
   <div class="widget idle" id="widget">
     <button class="widget-btn" id="btn">
       <!-- Mic icon (idle) -->
