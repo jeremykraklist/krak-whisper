@@ -223,7 +223,7 @@ public final class RecordingViewModel {
             let autoCopyEnabled = UserDefaults.standard.object(forKey: "krakwhisper.autoCopyToClipboard") as? Bool ?? true
             if autoCopyEnabled && !result.text.isEmpty {
                 #if os(iOS)
-                ClipboardService.copy(result.text)
+                UIPasteboard.general.string = result.text
                 #endif
                 showCopyFeedback = true
                 Task {
@@ -242,7 +242,7 @@ public final class RecordingViewModel {
         guard !transcribedText.isEmpty else { return }
 
         #if os(iOS)
-        ClipboardService.copy(transcribedText)
+        UIPasteboard.general.string = transcribedText
         #elseif os(macOS)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(transcribedText, forType: .string)

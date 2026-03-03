@@ -56,14 +56,26 @@ public enum WhisperModelSize: String, CaseIterable, Identifiable, Sendable {
     public var subtitle: String {
         switch self {
         case .tiny: return "Fastest · Lower accuracy"
-        case .base: return "Balanced · Recommended"
-        case .small: return "Accurate · Good for most use"
-        case .medium: return "Best accuracy · Uses more storage"
+        case .base: return "Balanced · Fast"
+        case .small: return "Accurate · Recommended"
+        case .medium: return "Best accuracy · Slow on iPhone"
+        }
+    }
+
+    /// Estimated transcription speed relative to audio duration on iPhone.
+    /// Example: "~2s per 10s audio" means 10 seconds of audio takes ~2s to transcribe.
+    public var speedEstimate: String {
+        switch self {
+        case .tiny: return "~1s per 10s audio"
+        case .base: return "~3s per 10s audio"
+        case .small: return "~10s per 10s audio"
+        case .medium: return "~45s per 10s audio ⚠️"
         }
     }
 
     /// The default recommended model.
-    public static let defaultModel: WhisperModelSize = .base
+    /// Small offers the best balance of speed (~10s/10s audio) and accuracy on iPhone.
+    public static let defaultModel: WhisperModelSize = .small
 }
 
 /// Utility for locating model files in the app's Documents directory.

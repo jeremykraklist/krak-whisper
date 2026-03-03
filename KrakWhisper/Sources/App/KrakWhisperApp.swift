@@ -9,13 +9,20 @@ struct KrakWhisperApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if onboardingComplete {
-                MainTabView(downloadManager: downloadManager)
-            } else {
-                OnboardingView(
-                    downloadManager: downloadManager,
-                    isOnboardingComplete: $onboardingComplete
-                )
+            Group {
+                if onboardingComplete {
+                    MainTabView(downloadManager: downloadManager)
+                } else {
+                    OnboardingView(
+                        downloadManager: downloadManager,
+                        isOnboardingComplete: $onboardingComplete
+                    )
+                }
+            }
+            .onAppear {
+                // Sync all downloaded models to shared App Group container
+                // so the keyboard extension can access them
+                downloadManager.syncModelsToSharedContainer()
             }
         }
     }

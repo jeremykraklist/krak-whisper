@@ -364,6 +364,9 @@ extension ModelDownloadManager: URLSessionDownloadDelegate {
             if validateModelFile(model) {
                 downloadStates[model] = .downloaded
                 logger.info("Successfully downloaded and validated \(model.rawValue)")
+                // Copy to shared App Group container so keyboard extension can access it
+                copyModelToSharedContainer(model)
+                syncSelectedModelToSharedDefaults()
             } else {
                 try? FileManager.default.removeItem(at: localURL(for: model))
                 downloadStates[model] = .failed(message: "Validation failed — file size mismatch")
