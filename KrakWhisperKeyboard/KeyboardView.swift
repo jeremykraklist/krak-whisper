@@ -288,7 +288,7 @@ struct KeyboardView: View {
         }) {
             Text(transcribedText.isEmpty ? "return" : "Insert")
                 .font(.system(size: 14, weight: transcribedText.isEmpty ? .regular : .semibold))
-                .foregroundStyle(transcribedText.isEmpty ? .primary : .white)
+                .foregroundStyle(transcribedText.isEmpty ? Color.primary : Color.white)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(
                     RoundedRectangle(cornerRadius: 6)

@@ -1,0 +1,543 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B001 /* KrakWhisperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001; };
+		B002 /* TranscriptionRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = F002; };
+		B003 /* WhisperModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F003; };
+		B004 /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F004; };
+		B005 /* ModelDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F005; };
+		B006 /* WhisperTranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F006; };
+		B007 /* RecordingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F007; };
+		B008 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F008; };
+		B009 /* KeyboardSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F009; };
+		B010 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F010; };
+		B011 /* ModelDownloadRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F011; };
+		B012 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F012; };
+		B013 /* RecordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F013; };
+		B014 /* RecordingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F014; };
+		B015 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F015; };
+		B016 /* WaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F016; };
+		B020 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F020; };
+		B030 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = P001; };
+		BK01 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FK01; };
+		BK02 /* KeyboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FK02; };
+		BK03 /* AudioLevelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FK03; };
+		BK04 /* SharedModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FK04; };
+		BK05 /* WhisperModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F003; };
+		BK06 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = PK01; };
+		BK07 /* KrakWhisperKeyboard.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = FK00; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		BK08 /* WhisperTranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F006; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		CP01 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = PRJ1 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = TK01;
+			remoteInfo = KrakWhisperKeyboard;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		EKBP /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				BK07 /* KrakWhisperKeyboard.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		F000 /* KrakWhisper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KrakWhisper.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F001 /* KrakWhisperApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KrakWhisperApp.swift; sourceTree = "<group>"; };
+		F002 /* TranscriptionRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionRecord.swift; sourceTree = "<group>"; };
+		F003 /* WhisperModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperModel.swift; sourceTree = "<group>"; };
+		F004 /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
+		F005 /* ModelDownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDownloadManager.swift; sourceTree = "<group>"; };
+		F006 /* WhisperTranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperTranscriptionService.swift; sourceTree = "<group>"; };
+		F007 /* RecordingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingViewModel.swift; sourceTree = "<group>"; };
+		F008 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		F009 /* KeyboardSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardSetupView.swift; sourceTree = "<group>"; };
+		F010 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		F011 /* ModelDownloadRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDownloadRow.swift; sourceTree = "<group>"; };
+		F012 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		F013 /* RecordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordView.swift; sourceTree = "<group>"; };
+		F014 /* RecordingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingView.swift; sourceTree = "<group>"; };
+		F015 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		F016 /* WaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformView.swift; sourceTree = "<group>"; };
+		F020 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		F021 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		F022 /* KrakWhisper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KrakWhisper.entitlements; sourceTree = "<group>"; };
+		FK00 /* KrakWhisperKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KrakWhisperKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		FK01 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
+		FK02 /* KeyboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardView.swift; sourceTree = "<group>"; };
+		FK03 /* AudioLevelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioLevelView.swift; sourceTree = "<group>"; };
+		FK04 /* SharedModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedModelManager.swift; sourceTree = "<group>"; };
+		FK05 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		FK06 /* KrakWhisperKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KrakWhisperKeyboard.entitlements; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		FWBP /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B030 /* SwiftWhisper in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FKBP /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BK06 /* SwiftWhisper in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		G000 = {
+			isa = PBXGroup;
+			children = (
+				G100 /* KrakWhisper */,
+				GK00 /* KrakWhisperKeyboard */,
+				G900 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		G100 /* KrakWhisper */ = {
+			isa = PBXGroup;
+			children = (
+				G110 /* App */,
+				G120 /* Models */,
+				G130 /* Services */,
+				G140 /* ViewModels */,
+				G150 /* Views */,
+				F020 /* Assets.xcassets */,
+				F021 /* Info.plist */,
+				F022 /* KrakWhisper.entitlements */,
+			);
+			name = KrakWhisper;
+			path = KrakWhisper;
+			sourceTree = "<group>";
+		};
+		G110 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				F001 /* KrakWhisperApp.swift */,
+			);
+			path = "Sources/App";
+			sourceTree = "<group>";
+		};
+		G120 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				F002 /* TranscriptionRecord.swift */,
+				F003 /* WhisperModel.swift */,
+			);
+			path = "Sources/Models";
+			sourceTree = "<group>";
+		};
+		G130 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				F004 /* AudioCaptureService.swift */,
+				F005 /* ModelDownloadManager.swift */,
+				F006 /* WhisperTranscriptionService.swift */,
+			);
+			path = "Sources/Services";
+			sourceTree = "<group>";
+		};
+		G140 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				F007 /* RecordingViewModel.swift */,
+			);
+			path = "Sources/ViewModels";
+			sourceTree = "<group>";
+		};
+		G150 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				F008 /* HistoryView.swift */,
+				F009 /* KeyboardSetupView.swift */,
+				F010 /* MainTabView.swift */,
+				F011 /* ModelDownloadRow.swift */,
+				F012 /* OnboardingView.swift */,
+				F013 /* RecordView.swift */,
+				F014 /* RecordingView.swift */,
+				F015 /* SettingsView.swift */,
+				F016 /* WaveformView.swift */,
+			);
+			path = "Sources/Views";
+			sourceTree = "<group>";
+		};
+		GK00 /* KrakWhisperKeyboard */ = {
+			isa = PBXGroup;
+			children = (
+				FK01 /* KeyboardViewController.swift */,
+				FK02 /* KeyboardView.swift */,
+				FK03 /* AudioLevelView.swift */,
+				FK04 /* SharedModelManager.swift */,
+				FK05 /* Info.plist */,
+				FK06 /* KrakWhisperKeyboard.entitlements */,
+			);
+			name = KrakWhisperKeyboard;
+			path = KrakWhisperKeyboard;
+			sourceTree = "<group>";
+		};
+		G900 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				F000 /* KrakWhisper.app */,
+				FK00 /* KrakWhisperKeyboard.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		T001 /* KrakWhisper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CL01 /* Build configuration list for PBXNativeTarget */;
+			buildPhases = (
+				SRBP /* Sources */,
+				FWBP /* Frameworks */,
+				RSBP /* Resources */,
+				EKBP /* Embed App Extensions */,
+			);
+			buildRules = ();
+			dependencies = (
+				TD01 /* PBXTargetDependency */,
+			);
+			name = KrakWhisper;
+			packageProductDependencies = (
+				P001 /* SwiftWhisper */,
+			);
+			productName = KrakWhisper;
+			productReference = F000 /* KrakWhisper.app */;
+			productType = "com.apple.product-type.application";
+		};
+		TK01 /* KrakWhisperKeyboard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CLK1 /* Build configuration list for PBXNativeTarget "KrakWhisperKeyboard" */;
+			buildPhases = (
+				SKBP /* Sources */,
+				FKBP /* Frameworks */,
+				RKBP /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = KrakWhisperKeyboard;
+			packageProductDependencies = (
+				PK01 /* SwiftWhisper */,
+			);
+			productName = KrakWhisperKeyboard;
+			productReference = FK00 /* KrakWhisperKeyboard.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		PRJ1 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					TK01 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = CL02 /* Build configuration list for PBXProject */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base);
+			mainGroup = G000;
+			packageReferences = (
+				PKG1 /* SwiftWhisper */,
+			);
+			productRefGroup = G900 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				T001 /* KrakWhisper */,
+				TK01 /* KrakWhisperKeyboard */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		RSBP /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B020 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		RKBP /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		SRBP /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B001 /* KrakWhisperApp.swift in Sources */,
+				B002 /* TranscriptionRecord.swift in Sources */,
+				B003 /* WhisperModel.swift in Sources */,
+				B004 /* AudioCaptureService.swift in Sources */,
+				B005 /* ModelDownloadManager.swift in Sources */,
+				B006 /* WhisperTranscriptionService.swift in Sources */,
+				B007 /* RecordingViewModel.swift in Sources */,
+				B008 /* HistoryView.swift in Sources */,
+				B009 /* KeyboardSetupView.swift in Sources */,
+				B010 /* MainTabView.swift in Sources */,
+				B011 /* ModelDownloadRow.swift in Sources */,
+				B012 /* OnboardingView.swift in Sources */,
+				B013 /* RecordView.swift in Sources */,
+				B014 /* RecordingView.swift in Sources */,
+				B015 /* SettingsView.swift in Sources */,
+				B016 /* WaveformView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		SKBP /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BK01 /* KeyboardViewController.swift in Sources */,
+				BK02 /* KeyboardView.swift in Sources */,
+				BK03 /* AudioLevelView.swift in Sources */,
+				BK04 /* SharedModelManager.swift in Sources */,
+				BK05 /* WhisperModel.swift in Sources */,
+				BK08 /* WhisperTranscriptionService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		TD01 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = TK01 /* KrakWhisperKeyboard */;
+			targetProxy = CP01 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		BC01 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = KrakWhisper/KrakWhisper.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J4F36L43U9;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KrakWhisper/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.jeremykrakowski.krakwhisper";
+				PRODUCT_NAME = KrakWhisper;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		BC02 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = KrakWhisper/KrakWhisper.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J4F36L43U9;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KrakWhisper/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.jeremykrakowski.krakwhisper";
+				PRODUCT_NAME = KrakWhisper;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		BC03 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		BC04 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		BKC1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = KrakWhisperKeyboard/KrakWhisperKeyboard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J4F36L43U9;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KrakWhisperKeyboard/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.jeremykrakowski.krakwhisper.keyboard";
+				PRODUCT_NAME = KrakWhisperKeyboard;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		BKC2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = KrakWhisperKeyboard/KrakWhisperKeyboard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J4F36L43U9;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KrakWhisperKeyboard/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.jeremykrakowski.krakwhisper.keyboard";
+				PRODUCT_NAME = KrakWhisperKeyboard;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		CL01 /* Build configuration list for PBXNativeTarget */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BC01 /* Debug */,
+				BC02 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CL02 /* Build configuration list for PBXProject */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BC03 /* Debug */,
+				BC04 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CLK1 /* Build configuration list for PBXNativeTarget "KrakWhisperKeyboard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BKC1 /* Debug */,
+				BKC2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		PKG1 /* SwiftWhisper */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/exPHAT/SwiftWhisper.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.2.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		P001 /* SwiftWhisper */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = PKG1 /* SwiftWhisper */;
+			productName = SwiftWhisper;
+		};
+		PK01 /* SwiftWhisper */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = PKG1 /* SwiftWhisper */;
+			productName = SwiftWhisper;
+		};
+/* End XCSwiftPackageProductDependency section */
+
+	};
+	rootObject = PRJ1 /* Project object */;
+}
