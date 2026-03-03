@@ -177,6 +177,9 @@ class AudioRecorder {
   async _startFfmpegRecording(ffmpegPath) {
     const deviceName = this._selectedMic || await this._getWindowsAudioDevice(ffmpegPath);
     this._recordingMethod = 'ffmpeg';
+    console.log('[audio] Starting ffmpeg recording with device:', deviceName);
+    console.log('[audio] Output path:', this._outputPath);
+
     this._process = spawn(ffmpegPath, [
       '-y',
       '-f', 'dshow',
@@ -189,8 +192,20 @@ class AudioRecorder {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
+    // Log ffmpeg stderr for debugging
+    this._process.stderr.on('data', (data) => {
+      const msg = data.toString().trim();
+      if (msg && !msg.includes('configuration:') && !msg.includes('libav')) {
+        console.log('[ffmpeg]', msg.substring(0, 200));
+      }
+    });
+
+    this._process.on('error', (err) => {
+      console.error('[audio] ffmpeg process error:', err.message);
+    });
+
     // Wait a moment for ffmpeg to initialize
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
   /**
@@ -338,15 +353,30 @@ Write-Host "MCI_SAVED"
       }, (_error, _stdout, stderr) => {
         const output = stderr || '';
         const lines = output.split('\n');
+
+        // Strategy 1: Look for lines with (audio) suffix (newer ffmpeg)
+        for (const line of lines) {
+          if (line.includes('(audio)')) {
+            const match = line.match(/"([^"]+)"/);
+            if (match) {
+              console.log('[audio] Found audio device:', match[1]);
+              resolve(match[1]);
+              return;
+            }
+          }
+        }
+
+        // Strategy 2: Look for "DirectShow audio devices" section (older ffmpeg)
         let inAudio = false;
         for (const line of lines) {
           if (line.includes('DirectShow audio devices')) {
             inAudio = true;
             continue;
           }
-          if (inAudio && line.includes(']  "')) {
+          if (inAudio && line.includes('"')) {
             const match = line.match(/"([^"]+)"/);
             if (match) {
+              console.log('[audio] Found audio device (legacy):', match[1]);
               resolve(match[1]);
               return;
             }
@@ -355,6 +385,8 @@ Write-Host "MCI_SAVED"
             break;
           }
         }
+
+        console.error('[audio] No audio device found! ffmpeg output:', output.substring(0, 500));
         resolve('Microphone');
       });
     });
