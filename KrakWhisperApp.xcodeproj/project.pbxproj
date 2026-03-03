@@ -25,7 +25,6 @@
 		B020 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F020; };
 		B030 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = P001; };
 		BK01 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FK01; };
-		BK02 /* KeyboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FK02; };
 		BK03 /* AudioLevelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FK03; };
 		BK04 /* SharedModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FK04; };
 		BK05 /* WhisperModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F003; };
@@ -81,7 +80,6 @@
 		F022 /* KrakWhisper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KrakWhisper.entitlements; sourceTree = "<group>"; };
 		FK00 /* KrakWhisperKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KrakWhisperKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		FK01 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
-		FK02 /* KeyboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardView.swift; sourceTree = "<group>"; };
 		FK03 /* AudioLevelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioLevelView.swift; sourceTree = "<group>"; };
 		FK04 /* SharedModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedModelManager.swift; sourceTree = "<group>"; };
 		FK05 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -188,7 +186,6 @@
 			isa = PBXGroup;
 			children = (
 				FK01 /* KeyboardViewController.swift */,
-				FK02 /* KeyboardView.swift */,
 				FK03 /* AudioLevelView.swift */,
 				FK04 /* SharedModelManager.swift */,
 				FK05 /* Info.plist */,
@@ -330,7 +327,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				BK01 /* KeyboardViewController.swift in Sources */,
-				BK02 /* KeyboardView.swift in Sources */,
 				BK03 /* AudioLevelView.swift in Sources */,
 				BK04 /* SharedModelManager.swift in Sources */,
 				BK05 /* WhisperModel.swift in Sources */,
