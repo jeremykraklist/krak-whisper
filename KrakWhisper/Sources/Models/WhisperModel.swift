@@ -56,8 +56,8 @@ public enum WhisperModelSize: String, CaseIterable, Identifiable, Sendable {
     public var subtitle: String {
         switch self {
         case .tiny: return "Fastest · Lower accuracy"
-        case .base: return "Balanced · Recommended"
-        case .small: return "Accurate · Good for most use"
+        case .base: return "Balanced · Fast"
+        case .small: return "Accurate · Recommended"
         case .medium: return "Best accuracy · Slow on iPhone"
         }
     }
@@ -74,7 +74,8 @@ public enum WhisperModelSize: String, CaseIterable, Identifiable, Sendable {
     }
 
     /// The default recommended model.
-    public static let defaultModel: WhisperModelSize = .base
+    /// Small offers the best balance of speed (~10s/10s audio) and accuracy on iPhone.
+    public static let defaultModel: WhisperModelSize = .small
 }
 
 /// Utility for locating model files in the app's Documents directory.
