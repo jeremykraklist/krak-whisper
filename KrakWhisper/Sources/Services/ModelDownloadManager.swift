@@ -269,6 +269,7 @@ public final class ModelDownloadManager: NSObject, ObservableObject {
 
     /// Copy a downloaded model to the shared App Group container.
     /// Called after successful download so the keyboard extension can access it.
+    /// Performs I/O on a background queue to avoid blocking the main thread.
     private func copyModelToSharedContainer(_ model: WhisperModelSize) {
         guard let sharedDir = sharedModelsDirectory else {
             logger.warning("Shared App Group container not available — keyboard extension won't have model access")
@@ -278,15 +279,17 @@ public final class ModelDownloadManager: NSObject, ObservableObject {
         let sourceURL = localURL(for: model)
         let destinationURL = sharedDir.appendingPathComponent(model.fileName)
 
-        do {
-            // Remove existing copy if present
-            if FileManager.default.fileExists(atPath: destinationURL.path) {
-                try FileManager.default.removeItem(at: destinationURL)
+        Task.detached(priority: .utility) { [logger] in
+            do {
+                // Remove existing copy if present
+                if FileManager.default.fileExists(atPath: destinationURL.path) {
+                    try FileManager.default.removeItem(at: destinationURL)
+                }
+                try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+                logger.info("Copied \(model.rawValue) to shared container for keyboard extension")
+            } catch {
+                logger.error("Failed to copy \(model.rawValue) to shared container: \(error.localizedDescription)")
             }
-            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
-            logger.info("Copied \(model.rawValue) to shared container for keyboard extension")
-        } catch {
-            logger.error("Failed to copy \(model.rawValue) to shared container: \(error.localizedDescription)")
         }
     }
 
@@ -297,20 +300,28 @@ public final class ModelDownloadManager: NSObject, ObservableObject {
 
     /// Sync all downloaded models to the shared container.
     /// Call this on app launch to ensure the keyboard extension has access.
+    /// Runs file copies on a background queue to avoid blocking the main thread.
     public func syncModelsToSharedContainer() {
-        for model in WhisperModelSize.allCases {
-            guard downloadStates[model] == .downloaded else { continue }
-            copyModelToSharedContainer(model)
-        }
         syncSelectedModelToSharedDefaults()
-        logger.info("Synced all downloaded models to shared container")
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+            await MainActor.run {
+                for model in WhisperModelSize.allCases {
+                    guard self.downloadStates[model] == .downloaded else { continue }
+                    self.copyModelToSharedContainer(model)
+                }
+                self.logger.info("Queued sync of all downloaded models to shared container")
+            }
+        }
     }
 
     /// Remove a model from the shared container (when deleted from main app).
     private func removeModelFromSharedContainer(_ model: WhisperModelSize) {
         guard let sharedDir = sharedModelsDirectory else { return }
         let url = sharedDir.appendingPathComponent(model.fileName)
-        try? FileManager.default.removeItem(at: url)
+        Task.detached(priority: .utility) {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 }
 

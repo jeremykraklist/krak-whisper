@@ -45,6 +45,10 @@ final class KeyboardViewController: UIInputViewController {
     private let sampleRate: Double = 16_000
     private let maxAudioLevels = 60
 
+    /// Maximum recording duration in seconds to prevent OOM in the extension.
+    /// At 16kHz Float32, 60 seconds = ~3.8MB — safe within the 50MB limit.
+    private let maxRecordingDuration: TimeInterval = 60
+
     // Recording timer
     private var durationTimer: Timer?
 
@@ -175,10 +179,10 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
 
-        // Request mic permission if needed
-        AVAudioSession.sharedInstance().requestRecordPermission { [weak self] granted in
-            DispatchQueue.main.async {
-                guard let self else { return }
+        // Request mic permission — use modern API (iOS 17+)
+        Task {
+            let granted = await AVAudioApplication.requestRecordPermission()
+            await MainActor.run {
                 if granted {
                     self.beginAudioCapture()
                 } else {
@@ -261,11 +265,16 @@ final class KeyboardViewController: UIInputViewController {
             audioEngine = engine
             keyboardState = .recording
 
-            // Start duration timer
+            // Start duration timer with auto-stop at max duration
             durationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
                 DispatchQueue.main.async {
                     guard let self, self.keyboardState == .recording else { return }
                     self.recordingDuration += 0.1
+
+                    // Auto-stop at max duration to prevent OOM in extension
+                    if self.recordingDuration >= self.maxRecordingDuration {
+                        self.stopRecordingAndTranscribe()
+                    }
                 }
             }
         } catch {

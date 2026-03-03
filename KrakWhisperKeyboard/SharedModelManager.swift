@@ -82,7 +82,8 @@ final class SharedModelManager {
     }
 
     /// Returns `true` if any usable model is available for the keyboard.
+    /// Only checks tiny and base — small is too large for the extension's ~50MB memory limit.
     static var hasAnyModel: Bool {
-        isModelAvailable(.tiny) || isModelAvailable(.base) || isModelAvailable(.small)
+        isModelAvailable(.tiny) || isModelAvailable(.base)
     }
 }
