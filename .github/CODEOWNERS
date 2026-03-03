@@ -1,0 +1,12 @@
+# KrakWhisper Code Owners
+# Frontend / UI
+KrakWhisper/Sources/Views/     @jeremykraklist
+KrakWhisperKeyboard/           @jeremykraklist
+
+# Core / Models
+KrakWhisper/Sources/Models/    @jeremykraklist
+KrakWhisper/Sources/Services/  @jeremykraklist
+
+# Infra / CI
+.github/                       @jeremykraklist
+KrakWhisperApp.xcodeproj/      @jeremykraklist
