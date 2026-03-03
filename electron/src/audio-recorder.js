@@ -47,8 +47,10 @@ class AudioRecorder {
 
     const tempDir = os.tmpdir();
     this._outputPath = path.join(tempDir, `krakwhisper-rec-${Date.now()}.wav`);
+    console.log('[recorder] start() — platform:', process.platform, 'outputPath:', this._outputPath);
 
     if (process.platform === 'win32') {
+      console.log('[recorder] Using Windows recording strategy');
       await this._startWindowsRecording();
     } else if (process.platform === 'darwin') {
       await this._startMacRecording();
@@ -68,6 +70,7 @@ class AudioRecorder {
       throw new Error('Not recording');
     }
 
+    console.log('[recorder] stop() — method:', this._recordingMethod, 'outputPath:', this._outputPath);
     this._isRecording = false;
 
     if (this._recordingMethod === 'mci') {
@@ -88,15 +91,26 @@ class AudioRecorder {
         });
 
         if (process.platform === 'win32') {
-          // For ffmpeg on Windows, send 'q' to stdin for graceful stop
+          // On Windows, ffmpeg needs graceful shutdown to finalize the WAV header.
+          // Strategy: send 'q\n' to stdin, wait for exit, then force-kill as fallback.
+          console.log('[recorder] Stopping ffmpeg on Windows...');
           try {
             if (proc.stdin && proc.stdin.writable) {
-              proc.stdin.write('q');
+              proc.stdin.write('q\n');
+              proc.stdin.end();
             }
-          } catch { /* ignore */ }
-          // Give it a moment to finalize the file
-          await new Promise((r) => setTimeout(r, 500));
-          try { proc.kill('SIGTERM'); } catch { /* ignore */ }
+          } catch (e) {
+            console.error('[recorder] Failed to send q to ffmpeg:', e.message);
+          }
+          // Wait up to 2 seconds for ffmpeg to exit gracefully
+          const gracefulWait = new Promise((r) => setTimeout(r, 2000));
+          const earlyExit = new Promise((r) => proc.once('exit', () => r('exited')));
+          const result = await Promise.race([earlyExit, gracefulWait]);
+          console.log('[recorder] ffmpeg graceful stop result:', result || 'timeout');
+          if (result !== 'exited') {
+            console.log('[recorder] Force-killing ffmpeg');
+            try { proc.kill(); } catch { /* ignore */ }
+          }
         } else {
           try { proc.kill('SIGINT'); } catch { /* ignore */ }
         }
@@ -108,13 +122,15 @@ class AudioRecorder {
     this._recordingMethod = null;
 
     // Read and convert WAV file
+    console.log('[recorder] Checking output file:', this._outputPath, 'exists:', fs.existsSync(this._outputPath));
     if (this._outputPath && fs.existsSync(this._outputPath)) {
       try {
         const wavData = fs.readFileSync(this._outputPath);
+        console.log('[recorder] WAV file size:', wavData.length, 'bytes');
 
         // Check if the file is too small (no audio data)
         if (wavData.length < 100) {
-          console.error('WAV file too small, likely no audio captured');
+          console.error('[recorder] WAV file too small, likely no audio captured');
           return Buffer.alloc(0);
         }
 
@@ -153,7 +169,9 @@ class AudioRecorder {
     // Strategy 1: Check for ffmpeg in bin/ directory (bundled with app)
     const binDir = this._getBinDir();
     const bundledFfmpeg = path.join(binDir, 'ffmpeg.exe');
+    console.log('[recorder] Checking bundled ffmpeg at:', bundledFfmpeg, 'exists:', fs.existsSync(bundledFfmpeg));
     if (fs.existsSync(bundledFfmpeg)) {
+      console.log('[recorder] Using bundled ffmpeg');
       await this._startFfmpegRecording(bundledFfmpeg);
       return;
     }
