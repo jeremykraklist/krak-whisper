@@ -345,13 +345,22 @@ final class KeyboardViewController: UIInputViewController {
     /// Step 2: Record audio
     private func startRecording() {
         recordedFrames = []; recordingDuration = 0
+        
+        // Check Full Access is enabled (required for mic + network)
+        guard hasFullAccess else {
+            statusLabel.text = "⚠️ Enable Full Access in Settings"
+            statusLabel.textColor = .systemRed
+            recordingState = .idle; if let m = micButton { updateMic(m) }
+            return
+        }
+        
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.record, mode: .measurement, options: [])
             try session.setPreferredSampleRate(sampleRate)
             try session.setActive(true, options: [])
         } catch {
-            statusLabel.text = "⚠️ Enable mic in Settings → KrakWhisper"
+            statusLabel.text = "⚠️ Mic access: \(error.localizedDescription)"
             statusLabel.textColor = .systemRed
             recordingState = .idle; if let m = micButton { updateMic(m) }
             return
@@ -390,7 +399,7 @@ final class KeyboardViewController: UIInputViewController {
                 if self.recordingDuration >= 60 { self.stopAndTranscribe() }
             }
         } catch {
-            statusLabel.text = "Mic failed"; statusLabel.textColor = .systemRed
+            statusLabel.text = "Mic: \(error.localizedDescription)"; statusLabel.textColor = .systemRed
             recordingState = .idle; if let m = micButton { updateMic(m) }
         }
     }
