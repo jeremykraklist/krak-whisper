@@ -27,6 +27,13 @@ class AudioRecorder {
     this._isRecording = false;
     /** @type {'ffmpeg' | 'mci' | 'sox' | 'arecord' | null} */
     this._recordingMethod = null;
+    /** @type {string | null} Override mic device name */
+    this._selectedMic = null;
+  }
+
+  /** Set the microphone device to use (null = auto-detect) */
+  setMicrophone(deviceName) {
+    this._selectedMic = deviceName || null;
   }
 
   /**
@@ -168,7 +175,7 @@ class AudioRecorder {
    * @param {string} ffmpegPath
    */
   async _startFfmpegRecording(ffmpegPath) {
-    const deviceName = await this._getWindowsAudioDevice(ffmpegPath);
+    const deviceName = this._selectedMic || await this._getWindowsAudioDevice(ffmpegPath);
     this._recordingMethod = 'ffmpeg';
     this._process = spawn(ffmpegPath, [
       '-y',

@@ -262,6 +262,9 @@ async function startRecording() {
   broadcastState();
 
   try {
+    // Apply selected microphone before recording
+    const selectedMic = store.get('microphone', '');
+    if (selectedMic) recorder.setMicrophone(selectedMic);
     await recorder.start();
   } catch (err) {
     isRecording = false;
@@ -444,3 +447,32 @@ ipcMain.handle('copy-to-clipboard', (_event, text) => {
   clipboard.writeText(text);
   return { success: true };
 });
+
+// ─── Microphone Selection ────────────────────────────────────────────
+ipcMain.handle('list-audio-devices', async () => {
+  const ffmpegPath = path.join(__dirname, '..', 'bin', 'ffmpeg.exe');
+  if (!require('fs').existsSync(ffmpegPath)) return [];
+  
+  return new Promise((resolve) => {
+    execFile(ffmpegPath, ['-list_devices', 'true', '-f', 'dshow', '-i', 'dummy'], {
+      timeout: 5000,
+    }, (_error, _stdout, stderr) => {
+      const output = stderr || '';
+      const lines = output.split('\n');
+      const devices = [];
+      let inAudio = false;
+      for (const line of lines) {
+        if (line.includes('DirectShow audio devices')) { inAudio = true; continue; }
+        if (inAudio && line.includes('DirectShow video devices')) break;
+        if (inAudio && line.includes(']  "')) {
+          const match = line.match(/"([^"]+)"/);
+          if (match) devices.push(match[1]);
+        }
+      }
+      resolve(devices);
+    });
+  });
+});
+
+ipcMain.handle('get-selected-mic', () => store.get('microphone', ''));
+ipcMain.handle('set-selected-mic', (_event, mic) => { store.set('microphone', mic); });
