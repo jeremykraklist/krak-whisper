@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 
 /// Main entry point for KrakWhisper iOS app.
@@ -19,3 +20,4 @@ struct KrakWhisperApp: App {
         }
     }
 }
+#endif

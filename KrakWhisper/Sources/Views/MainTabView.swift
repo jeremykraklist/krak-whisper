@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 
 /// Root TabView with Record / History / Settings tabs.
@@ -27,3 +28,4 @@ struct MainTabView: View {
 #Preview {
     MainTabView(downloadManager: .shared)
 }
+#endif

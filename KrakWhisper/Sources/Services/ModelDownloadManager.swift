@@ -5,14 +5,14 @@ import OSLog
 // MARK: - Download State
 
 /// Represents the current state of a model download or local availability.
-enum ModelDownloadState: Equatable {
+public enum ModelDownloadState: Equatable {
     case notDownloaded
     case downloading(progress: Double) // 0.0 ... 1.0
     case validating
     case downloaded
     case failed(message: String)
 
-    static func == (lhs: ModelDownloadState, rhs: ModelDownloadState) -> Bool {
+    public static func == (lhs: ModelDownloadState, rhs: ModelDownloadState) -> Bool {
         switch (lhs, rhs) {
         case (.notDownloaded, .notDownloaded): return true
         case (.downloading(let a), .downloading(let b)): return a == b
@@ -31,15 +31,15 @@ enum ModelDownloadState: Equatable {
 /// Uses URLSession background configuration for large file downloads that
 /// can survive app backgrounding on iOS.
 @MainActor
-final class ModelDownloadManager: NSObject, ObservableObject {
+public final class ModelDownloadManager: NSObject, ObservableObject {
 
     // MARK: - Published State
 
     /// Per-model download state, keyed by WhisperModelSize
-    @Published private(set) var downloadStates: [WhisperModelSize: ModelDownloadState] = [:]
+    @Published public private(set) var downloadStates: [WhisperModelSize: ModelDownloadState] = [:]
 
     /// The currently selected/active model
-    @Published var selectedModel: WhisperModelSize {
+    @Published public var selectedModel: WhisperModelSize {
         didSet {
             UserDefaults.standard.set(selectedModel.rawValue, forKey: Self.selectedModelKey)
         }
@@ -68,15 +68,15 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     private var activeDownloads: [WhisperModelSize: URLSessionDownloadTask] = [:]
 
     /// Background completion handler provided by the system
-    var backgroundCompletionHandler: (() -> Void)?
+    public var backgroundCompletionHandler: (() -> Void)?
 
     // MARK: - Singleton
 
-    static let shared = ModelDownloadManager()
+    public static let shared = ModelDownloadManager()
 
     // MARK: - Init
 
-    override init() {
+    public override init() {
         // Set up models directory
         let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         self.modelsDirectory = documentsURL.appendingPathComponent("Models", isDirectory: true)
@@ -103,22 +103,22 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     // MARK: - Public API
 
     /// Returns the local file URL for a model (whether or not it exists).
-    func localURL(for model: WhisperModelSize) -> URL {
+    public func localURL(for model: WhisperModelSize) -> URL {
         modelsDirectory.appendingPathComponent(model.fileName)
     }
 
     /// Whether the model file exists locally and passes validation.
-    func isModelAvailable(_ model: WhisperModelSize) -> Bool {
+    public func isModelAvailable(_ model: WhisperModelSize) -> Bool {
         downloadStates[model] == .downloaded
     }
 
     /// Whether the currently selected model is ready to use.
-    var isSelectedModelReady: Bool {
+    public var isSelectedModelReady: Bool {
         isModelAvailable(selectedModel)
     }
 
     /// Start downloading a model. No-op if already downloaded or in progress.
-    func download(_ model: WhisperModelSize) {
+    public func download(_ model: WhisperModelSize) {
         guard downloadStates[model] != .downloaded else {
             logger.info("Model \(model.rawValue) already downloaded, skipping.")
             return
@@ -139,7 +139,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     }
 
     /// Cancel an in-progress download.
-    func cancelDownload(_ model: WhisperModelSize) {
+    public func cancelDownload(_ model: WhisperModelSize) {
         guard let task = activeDownloads[model] else { return }
         logger.info("Cancelling download of \(model.rawValue)")
         task.cancel()
@@ -148,7 +148,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     }
 
     /// Delete a downloaded model file.
-    func deleteModel(_ model: WhisperModelSize) {
+    public func deleteModel(_ model: WhisperModelSize) {
         let fileURL = localURL(for: model)
         do {
             try FileManager.default.removeItem(at: fileURL)
@@ -165,7 +165,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     }
 
     /// Refresh the download state of all models by checking local files.
-    func refreshDownloadStates() {
+    public func refreshDownloadStates() {
         for model in WhisperModelSize.allCases {
             // Don't overwrite active downloads
             if case .downloading = downloadStates[model] { continue }
@@ -186,7 +186,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     }
 
     /// Total disk space used by downloaded models.
-    var totalDiskUsage: Int64 {
+    public var totalDiskUsage: Int64 {
         WhisperModelSize.allCases.reduce(0) { total, model in
             let url = localURL(for: model)
             guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
@@ -196,7 +196,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
     }
 
     /// Formatted total disk usage string.
-    var formattedDiskUsage: String {
+    public var formattedDiskUsage: String {
         ByteCountFormatter.string(fromByteCount: totalDiskUsage, countStyle: .file)
     }
 
@@ -237,7 +237,7 @@ final class ModelDownloadManager: NSObject, ObservableObject {
 
 extension ModelDownloadManager: URLSessionDownloadDelegate {
 
-    nonisolated func urlSession(
+    nonisolated public func urlSession(
         _ session: URLSession,
         downloadTask: URLSessionDownloadTask,
         didFinishDownloadingTo location: URL
@@ -269,7 +269,7 @@ extension ModelDownloadManager: URLSessionDownloadDelegate {
         }
     }
 
-    nonisolated func urlSession(
+    nonisolated public func urlSession(
         _ session: URLSession,
         downloadTask: URLSessionDownloadTask,
         didWriteData bytesWritten: Int64,
@@ -294,7 +294,7 @@ extension ModelDownloadManager: URLSessionDownloadDelegate {
         }
     }
 
-    nonisolated func urlSession(
+    nonisolated public func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
         didCompleteWithError error: (any Error)?
@@ -315,7 +315,7 @@ extension ModelDownloadManager: URLSessionDownloadDelegate {
         }
     }
 
-    nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+    nonisolated public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         Task { @MainActor in
             backgroundCompletionHandler?()
             backgroundCompletionHandler = nil
