@@ -13,18 +13,28 @@ enum KeyboardState: Equatable {
     case noModel
 }
 
+/// Which keyboard mode is active.
+enum KeyboardMode: Equatable {
+    case voice   // Whisper dictation mode
+    case text    // Standard QWERTY typing mode
+}
+
 // MARK: - KeyboardView
 
 /// SwiftUI layout for the KrakWhisper custom keyboard.
 ///
-/// Designed to fit within the standard keyboard height (~216pt on iPhone).
-/// Dark theme to match system keyboards and reduce visual distraction.
+/// Supports two modes:
+/// - **Voice mode:** Whisper-powered dictation with mic button and waveform
+/// - **Text mode:** Full QWERTY keyboard for typing and editing
+///
+/// Toggle between modes with the mic/keyboard button in the bottom bar.
 struct KeyboardView: View {
     let state: KeyboardState
     let transcribedText: String
     let audioLevels: [Float]
     let recordingDuration: TimeInterval
     let modelName: String
+    let mode: KeyboardMode
 
     // Actions
     let onMicTap: () -> Void
@@ -35,8 +45,24 @@ struct KeyboardView: View {
     let onGlobe: () -> Void
     let onSettings: () -> Void
     let onClear: () -> Void
+    let onTypeChar: (String) -> Void
+    let onToggleMode: () -> Void
 
     var body: some View {
+        VStack(spacing: 0) {
+            switch mode {
+            case .voice:
+                voiceLayout
+            case .text:
+                qwertyLayout
+            }
+        }
+        .background(Color(uiColor: .systemBackground).opacity(0.95))
+    }
+
+    // MARK: - Voice Layout (original)
+
+    private var voiceLayout: some View {
         VStack(spacing: 0) {
             // Top: Status + Preview
             topSection
@@ -50,19 +76,203 @@ struct KeyboardView: View {
                 .padding(.horizontal, 12)
 
             // Bottom: Controls
-            bottomControls
+            voiceBottomControls
                 .frame(height: 64)
                 .padding(.horizontal, 8)
                 .padding(.bottom, 4)
         }
-        .background(Color(uiColor: .systemBackground).opacity(0.95))
     }
 
-    // MARK: - Top Section
+    // MARK: - QWERTY Layout
+
+    private var qwertyLayout: some View {
+        VStack(spacing: 0) {
+            // Transcription preview if we have text
+            if !transcribedText.isEmpty {
+                HStack {
+                    Text(transcribedText)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer()
+                    Button(action: onInsert) {
+                        Text("Insert")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(.blue))
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color(uiColor: .secondarySystemBackground))
+            }
+
+            // QWERTY keys
+            qwertyKeys
+                .padding(.horizontal, 3)
+                .padding(.top, 6)
+
+            // Bottom row: globe, mic toggle, space, return
+            qwertyBottomRow
+                .padding(.horizontal, 4)
+                .padding(.bottom, 4)
+                .padding(.top, 4)
+        }
+    }
+
+    @State private var isShifted = false
+    @State private var isCapsLock = false
+
+    private var qwertyKeys: some View {
+        let rows: [[String]] = [
+            ["q","w","e","r","t","y","u","i","o","p"],
+            ["a","s","d","f","g","h","j","k","l"],
+            ["z","x","c","v","b","n","m"]
+        ]
+
+        return VStack(spacing: 6) {
+            ForEach(0..<rows.count, id: \.self) { rowIndex in
+                HStack(spacing: 4) {
+                    // Shift key on last row
+                    if rowIndex == 2 {
+                        Button(action: {
+                            isShifted.toggle()
+                        }) {
+                            Image(systemName: isShifted ? "shift.fill" : "shift")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(.primary)
+                                .frame(width: 36, height: 42)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .fill(isShifted
+                                              ? Color(uiColor: .systemBackground)
+                                              : Color(uiColor: .secondarySystemBackground))
+                                )
+                        }
+                    }
+
+                    ForEach(rows[rowIndex], id: \.self) { key in
+                        Button(action: {
+                            let char = (isShifted || isCapsLock) ? key.uppercased() : key
+                            onTypeChar(char)
+                            if isShifted && !isCapsLock {
+                                isShifted = false
+                            }
+                        }) {
+                            Text((isShifted || isCapsLock) ? key.uppercased() : key)
+                                .font(.system(size: 22, weight: .regular))
+                                .foregroundStyle(.primary)
+                                .frame(maxWidth: .infinity, minHeight: 42)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .fill(Color(uiColor: .systemBackground))
+                                        .shadow(color: .black.opacity(0.15), radius: 0.5, y: 1)
+                                )
+                        }
+                    }
+
+                    // Backspace on last row
+                    if rowIndex == 2 {
+                        Button(action: onBackspace) {
+                            Image(systemName: "delete.left")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(.primary)
+                                .frame(width: 36, height: 42)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .fill(Color(uiColor: .secondarySystemBackground))
+                                )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var qwertyBottomRow: some View {
+        HStack(spacing: 4) {
+            // Globe
+            Button(action: onGlobe) {
+                Image(systemName: "globe")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.primary)
+                    .frame(width: 40, height: 42)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(Color(uiColor: .secondarySystemBackground))
+                    )
+            }
+
+            // Mic toggle (switch to voice mode)
+            Button(action: onToggleMode) {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.red)
+                    .frame(width: 40, height: 42)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(Color(uiColor: .secondarySystemBackground))
+                    )
+            }
+
+            // Common punctuation
+            Button(action: { onTypeChar(",") }) {
+                Text(",")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.primary)
+                    .frame(width: 32, height: 42)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(Color(uiColor: .secondarySystemBackground))
+                    )
+            }
+
+            // Space bar
+            Button(action: onSpace) {
+                Text("space")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity, minHeight: 42)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(Color(uiColor: .systemBackground))
+                            .shadow(color: .black.opacity(0.15), radius: 0.5, y: 1)
+                    )
+            }
+
+            // Period
+            Button(action: { onTypeChar(".") }) {
+                Text(".")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.primary)
+                    .frame(width: 32, height: 42)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(Color(uiColor: .secondarySystemBackground))
+                    )
+            }
+
+            // Return
+            Button(action: onReturn) {
+                Image(systemName: "return")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.primary)
+                    .frame(width: 64, height: 42)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(Color(uiColor: .secondarySystemBackground))
+                    )
+            }
+        }
+    }
+
+    // MARK: - Voice Mode Components
 
     private var topSection: some View {
         VStack(spacing: 4) {
-            // Status bar
             HStack {
                 statusIndicator
                 Spacer()
@@ -75,7 +285,6 @@ struct KeyboardView: View {
             }
             .frame(height: 20)
 
-            // Text preview
             textPreviewArea
         }
     }
@@ -161,8 +370,6 @@ struct KeyboardView: View {
         )
     }
 
-    // MARK: - Middle Section
-
     private var middleSection: some View {
         Group {
             switch state {
@@ -176,19 +383,19 @@ struct KeyboardView: View {
         }
     }
 
-    // MARK: - Bottom Controls
+    // MARK: - Voice Bottom Controls
 
-    private var bottomControls: some View {
+    private var voiceBottomControls: some View {
         HStack(spacing: 6) {
-            // Globe button (keyboard switching — required by Apple)
+            // Globe button
             keyboardButton(systemImage: "globe") {
                 onGlobe()
             }
             .frame(width: 44)
 
-            // Settings
-            keyboardButton(systemImage: "gearshape") {
-                onSettings()
+            // Toggle to QWERTY mode
+            keyboardButton(systemImage: "keyboard") {
+                onToggleMode()
             }
             .frame(width: 44)
 
@@ -200,7 +407,7 @@ struct KeyboardView: View {
 
             Spacer()
 
-            // Mic button — the star of the show
+            // Mic button
             micButton
                 .frame(width: 60, height: 60)
 
@@ -234,12 +441,9 @@ struct KeyboardView: View {
         .frame(maxHeight: .infinity)
     }
 
-    // MARK: - Mic Button
-
     private var micButton: some View {
         Button(action: onMicTap) {
             ZStack {
-                // Pulsing ring when recording
                 if state == .recording {
                     Circle()
                         .stroke(Color.red.opacity(0.3), lineWidth: 2)
@@ -276,8 +480,6 @@ struct KeyboardView: View {
         }
     }
 
-    // MARK: - Insert / Return
-
     private var insertOrReturnButton: some View {
         Button(action: {
             if !transcribedText.isEmpty {
@@ -301,8 +503,6 @@ struct KeyboardView: View {
         }
     }
 
-    // MARK: - Helper Buttons
-
     private func keyboardButton(systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
@@ -316,8 +516,6 @@ struct KeyboardView: View {
         }
         .frame(height: 44)
     }
-
-    // MARK: - Formatting
 
     private var formattedDuration: String {
         let seconds = Int(recordingDuration)

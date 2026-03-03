@@ -24,6 +24,11 @@ final class KeyboardViewController: UIInputViewController {
         didSet { updateView() }
     }
 
+    /// Current keyboard mode (voice dictation or QWERTY typing).
+    private var keyboardMode: KeyboardMode = .text {
+        didSet { updateView() }
+    }
+
     /// Transcribed text waiting to be inserted.
     private var transcribedText: String = "" {
         didSet { updateView() }
@@ -115,6 +120,7 @@ final class KeyboardViewController: UIInputViewController {
             audioLevels: audioLevels,
             recordingDuration: recordingDuration,
             modelName: SharedModelManager.keyboardModelSize.rawValue,
+            mode: keyboardMode,
             onMicTap: { [weak self] in self?.handleMicTap() },
             onInsert: { [weak self] in self?.insertText() },
             onBackspace: { [weak self] in self?.handleBackspace() },
@@ -122,7 +128,9 @@ final class KeyboardViewController: UIInputViewController {
             onReturn: { [weak self] in self?.handleReturn() },
             onGlobe: { [weak self] in self?.advanceToNextInputMode() },
             onSettings: { [weak self] in self?.openMainApp() },
-            onClear: { [weak self] in self?.clearTranscription() }
+            onClear: { [weak self] in self?.clearTranscription() },
+            onTypeChar: { [weak self] char in self?.typeCharacter(char) },
+            onToggleMode: { [weak self] in self?.toggleKeyboardMode() }
         )
     }
 
@@ -344,6 +352,18 @@ final class KeyboardViewController: UIInputViewController {
         }
         let rms = sqrt(sum / Float(frames))
         return min(1.0, rms * 5.0)
+    }
+
+    // MARK: - Mode Toggle
+
+    private func toggleKeyboardMode() {
+        // Don't toggle while recording
+        guard keyboardState != .recording && keyboardState != .transcribing else { return }
+        keyboardMode = (keyboardMode == .voice) ? .text : .voice
+    }
+
+    private func typeCharacter(_ char: String) {
+        textDocumentProxy.insertText(char)
     }
 
     // MARK: - Text Actions

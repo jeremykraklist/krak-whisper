@@ -1,6 +1,7 @@
 #if os(iOS)
 import SwiftUI
 import SwiftData
+import UIKit
 
 // MARK: - HistoryView
 
@@ -202,7 +203,7 @@ struct HistoryRowView: View {
 
                 // Quick copy button
                 Button {
-                    ClipboardService.copy(record.text)
+                    UIPasteboard.general.string = record.text
                     showCopyConfirmation = true
                     Task {
                         try? await Task.sleep(for: .seconds(1.5))
@@ -275,9 +276,6 @@ struct TranscriptionDetailView: View {
     /// Whether to show the cleaned version (true) or original (false).
     @State private var showingCleanedText = false
 
-    /// AI cleanup service instance.
-    @State private var cleanupService = AICleanupService()
-
     /// Whether cleanup is currently running.
     @State private var isCleaningUp = false
 
@@ -327,7 +325,7 @@ struct TranscriptionDetailView: View {
 
                 Menu {
                     Button {
-                        ClipboardService.copy(record.text)
+                        UIPasteboard.general.string = record.text
                         UIPasteboard.general.string = displayedText
                     } label: {
                         Label("Copy Text", systemImage: "doc.on.doc")
@@ -534,7 +532,7 @@ struct TranscriptionDetailView: View {
             // Inline action buttons for quick access
             HStack(spacing: 12) {
                 Button {
-                    ClipboardService.copy(record.text)
+                    UIPasteboard.general.string = record.text
                     showCopiedInline = true
                     Task {
                         try? await Task.sleep(for: .seconds(2))
@@ -589,7 +587,22 @@ struct TranscriptionDetailView: View {
         isCleaningUp = true
         defer { isCleaningUp = false }
 
-        let cleaned = await cleanupService.cleanup(record.text)
+        // Inline cleanup — remove filler words and fix whitespace
+        let rawText = record.text
+        let cleaned = await Task.detached(priority: .userInitiated) {
+            var text = rawText
+            let fillers = ["um", "uh", "uhm", "umm", "uhh", "hmm", "er", "erm", "ah", "ahh",
+                           "basically", "actually", "honestly", "literally"]
+            for filler in fillers {
+                text = text.replacingOccurrences(of: " \(filler) ", with: " ", options: .caseInsensitive)
+                text = text.replacingOccurrences(of: " \(filler),", with: ",", options: .caseInsensitive)
+                text = text.replacingOccurrences(of: " \(filler).", with: ".", options: .caseInsensitive)
+            }
+            while text.contains("  ") {
+                text = text.replacingOccurrences(of: "  ", with: " ")
+            }
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.value
 
         record.cleanedText = cleaned
         showingCleanedText = true
