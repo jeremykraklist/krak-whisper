@@ -139,7 +139,7 @@ struct OnboardingView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                 }
-                .buttonStyle(micPermissionGranted ? .borderedProminent : .bordered)
+                .buttonStyle(.borderedProminent)
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 40)
@@ -185,7 +185,7 @@ struct OnboardingView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
             }
-            .buttonStyle(downloadManager.isSelectedModelReady ? .borderedProminent : .bordered)
+            .buttonStyle(.borderedProminent)
             .padding(.horizontal, 24)
             .padding(.bottom, 40)
         }

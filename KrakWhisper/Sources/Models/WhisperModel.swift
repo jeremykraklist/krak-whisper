@@ -43,6 +43,14 @@ public enum WhisperModelSize: String, CaseIterable, Identifiable, Sendable {
     public var fileSizeTolerance: Int64 { Int64(Double(approximateSize) * 0.05) }
 
     /// Subtitle for UI display (speed + accuracy description).
+    /// Human-readable file size string.
+    public var fileSizeDescription: String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useMB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: approximateSize)
+    }
+
     public var subtitle: String {
         switch self {
         case .tiny: return "Fastest · Lower accuracy"
