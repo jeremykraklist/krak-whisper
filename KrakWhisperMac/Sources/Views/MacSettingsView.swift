@@ -257,7 +257,7 @@ struct AboutTab: View {
         VStack(spacing: 16) {
             Image(systemName: "mic.circle.fill")
                 .font(.system(size: 64))
-                .foregroundStyle(.accent)
+                .foregroundStyle(.blue)
 
             Text("KrakWhisper")
                 .font(.title)

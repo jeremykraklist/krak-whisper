@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // Set up status bar icon and popover
         statusBarController = StatusBarController(dictationViewModel: dictationViewModel)
 
-        // Register global hotkey (Cmd+Shift+Space)
+        // Register global hotkey (Cmd+Shift+W)
         hotkeyManager.onHotkeyPressed = { [weak self] in
             guard let self else { return }
             self.dictationViewModel.toggleDictation()
