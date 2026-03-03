@@ -9,7 +9,8 @@ let package = Package(
     ],
     products: [
         .library(name: "KrakWhisper", targets: ["KrakWhisper"]),
-        .executable(name: "KrakWhisperMac", targets: ["KrakWhisperMac"])
+        .executable(name: "KrakWhisperMac", targets: ["KrakWhisperMac"]),
+        .library(name: "KrakWhisperKeyboard", targets: ["KrakWhisperKeyboard"])
     ],
     dependencies: [
         .package(url: "https://github.com/exPHAT/SwiftWhisper.git", from: "1.2.0")
@@ -21,6 +22,15 @@ let package = Package(
                 .product(name: "SwiftWhisper", package: "SwiftWhisper")
             ],
             path: "KrakWhisper/Sources"
+        ),
+        .target(
+            name: "KrakWhisperKeyboard",
+            dependencies: [
+                "KrakWhisper",
+                .product(name: "SwiftWhisper", package: "SwiftWhisper")
+            ],
+            path: "KrakWhisperKeyboard",
+            exclude: ["Info.plist", "KrakWhisperKeyboard.entitlements"]
         ),
         .executableTarget(
             name: "KrakWhisperMac",

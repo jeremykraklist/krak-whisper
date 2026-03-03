@@ -48,6 +48,17 @@ struct SettingsView: View {
                     Toggle("Auto-copy to clipboard", isOn: $autoCopyToClipboard)
                 }
 
+                // MARK: - Keyboard Extension
+                #if os(iOS)
+                Section {
+                    KeyboardSetupInstructionsView()
+                } header: {
+                    Text("Keyboard Extension")
+                } footer: {
+                    Text("The KrakWhisper keyboard lets you dictate into any app. It uses the Tiny or Base model for fast, low-memory transcription.")
+                }
+                #endif
+
                 // MARK: - About
                 Section("About") {
                     HStack {
