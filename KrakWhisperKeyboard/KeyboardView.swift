@@ -35,6 +35,7 @@ struct KeyboardView: View {
     let recordingDuration: TimeInterval
     let modelName: String
     let mode: KeyboardMode
+    let isShifted: Bool
 
     // Actions
     let onMicTap: () -> Void
@@ -47,6 +48,7 @@ struct KeyboardView: View {
     let onClear: () -> Void
     let onTypeChar: (String) -> Void
     let onToggleMode: () -> Void
+    let onShiftTap: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -123,9 +125,6 @@ struct KeyboardView: View {
         }
     }
 
-    @State private var isShifted = false
-    @State private var isCapsLock = false
-
     private var qwertyKeys: some View {
         let rows: [[String]] = [
             ["q","w","e","r","t","y","u","i","o","p"],
@@ -138,9 +137,7 @@ struct KeyboardView: View {
                 HStack(spacing: 4) {
                     // Shift key on last row
                     if rowIndex == 2 {
-                        Button(action: {
-                            isShifted.toggle()
-                        }) {
+                        Button(action: onShiftTap) {
                             Image(systemName: isShifted ? "shift.fill" : "shift")
                                 .font(.system(size: 16, weight: .medium))
                                 .foregroundStyle(.primary)
@@ -156,13 +153,13 @@ struct KeyboardView: View {
 
                     ForEach(rows[rowIndex], id: \.self) { key in
                         Button(action: {
-                            let char = (isShifted || isCapsLock) ? key.uppercased() : key
+                            let char = isShifted ? key.uppercased() : key
                             onTypeChar(char)
-                            if isShifted && !isCapsLock {
-                                isShifted = false
+                            if isShifted {
+                                onShiftTap() // Auto-unshift after typing one char
                             }
                         }) {
-                            Text((isShifted || isCapsLock) ? key.uppercased() : key)
+                            Text(isShifted ? key.uppercased() : key)
                                 .font(.system(size: 22, weight: .regular))
                                 .foregroundStyle(.primary)
                                 .frame(maxWidth: .infinity, minHeight: 42)

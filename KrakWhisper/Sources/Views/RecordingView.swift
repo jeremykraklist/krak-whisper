@@ -23,6 +23,12 @@ public struct RecordingView: View {
         .task {
             await viewModel.loadModel()
         }
+        .onAppear {
+            // Reload model if user changed selection in Settings
+            Task {
+                await viewModel.reloadModelIfNeeded()
+            }
+        }
     }
 
     // MARK: - Header

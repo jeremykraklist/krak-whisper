@@ -18,6 +18,7 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: - Properties
 
     private var hostingController: UIHostingController<KeyboardView>?
+    private var heightConstraint: NSLayoutConstraint?
 
     /// Current keyboard state — drives the SwiftUI view.
     private var keyboardState: KeyboardState = .idle {
@@ -26,6 +27,14 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Current keyboard mode (voice dictation or QWERTY typing).
     private var keyboardMode: KeyboardMode = .text {
+        didSet {
+            updateHeightConstraint()
+            updateView()
+        }
+    }
+
+    /// Shift state for QWERTY keyboard (managed here so it persists across view updates).
+    private var isShifted = false {
         didSet { updateView() }
     }
 
@@ -102,12 +111,15 @@ final class KeyboardViewController: UIInputViewController {
         view.addSubview(hosting.view)
         hosting.didMove(toParent: self)
 
+        let height = hosting.view.heightAnchor.constraint(equalToConstant: keyboardMode == .text ? 260 : 200)
+        self.heightConstraint = height
+
         NSLayoutConstraint.activate([
             hosting.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             hosting.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             hosting.view.topAnchor.constraint(equalTo: view.topAnchor),
             hosting.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            hosting.view.heightAnchor.constraint(equalToConstant: 200),
+            height,
         ])
 
         self.hostingController = hosting
@@ -121,6 +133,7 @@ final class KeyboardViewController: UIInputViewController {
             recordingDuration: recordingDuration,
             modelName: SharedModelManager.keyboardModelSize.rawValue,
             mode: keyboardMode,
+            isShifted: isShifted,
             onMicTap: { [weak self] in self?.handleMicTap() },
             onInsert: { [weak self] in self?.insertText() },
             onBackspace: { [weak self] in self?.handleBackspace() },
@@ -130,12 +143,18 @@ final class KeyboardViewController: UIInputViewController {
             onSettings: { [weak self] in self?.openMainApp() },
             onClear: { [weak self] in self?.clearTranscription() },
             onTypeChar: { [weak self] char in self?.typeCharacter(char) },
-            onToggleMode: { [weak self] in self?.toggleKeyboardMode() }
+            onToggleMode: { [weak self] in self?.toggleKeyboardMode() },
+            onShiftTap: { [weak self] in self?.isShifted.toggle() }
         )
     }
 
     private func updateView() {
         hostingController?.rootView = makeKeyboardView()
+    }
+
+    private func updateHeightConstraint() {
+        heightConstraint?.constant = keyboardMode == .text ? 260 : 200
+        view.setNeedsLayout()
     }
 
     // MARK: - Model Loading

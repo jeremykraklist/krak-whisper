@@ -29,7 +29,8 @@ public final class RecordingViewModel {
     public private(set) var audioLevels: [Float] = []
     public private(set) var currentAudioLevel: Float = 0.0
     public private(set) var isModelLoaded: Bool = false
-    public var selectedModelSize: WhisperModelSize = .base
+    /// The currently loaded model size (may differ from selected if not yet reloaded).
+    public private(set) var loadedModelSize: WhisperModelSize?
     public private(set) var transcriptionDuration: TimeInterval = 0
     public private(set) var showCopyFeedback: Bool = false
 
@@ -46,24 +47,38 @@ public final class RecordingViewModel {
 
     // MARK: - Init
 
+    /// The currently selected model — always reads from ModelDownloadManager (single source of truth).
+    public var selectedModelSize: WhisperModelSize {
+        ModelDownloadManager.shared.selectedModel
+    }
+
     public init(transcriptionService: any TranscriptionServiceProtocol = WhisperTranscriptionService()) {
         self.transcriptionService = transcriptionService
-        // Read persisted model selection from UserDefaults
-        if let savedRawValue = UserDefaults.standard.string(forKey: "krakwhisper.selectedModel"),
-           let savedModel = WhisperModelSize(rawValue: savedRawValue) {
-            self.selectedModelSize = savedModel
-        }
     }
 
     // MARK: - Model Management
 
+    /// Load the currently selected model. Reloads if the selection changed since last load.
     public func loadModel() async {
+        let targetModel = selectedModelSize
+        // Skip reload if already loaded the same model
+        if isModelLoaded && loadedModelSize == targetModel { return }
+
         do {
-            try await transcriptionService.loadModel(selectedModelSize)
+            try await transcriptionService.loadModel(targetModel)
             isModelLoaded = true
+            loadedModelSize = targetModel
         } catch {
             state = .error("Failed to load model: \(error.localizedDescription)")
             isModelLoaded = false
+            loadedModelSize = nil
+        }
+    }
+
+    /// Check if the selected model changed and reload if needed.
+    public func reloadModelIfNeeded() async {
+        if loadedModelSize != selectedModelSize {
+            await loadModel()
         }
     }
 
