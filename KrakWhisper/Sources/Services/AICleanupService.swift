@@ -66,7 +66,10 @@ enum AITextProcessor {
         // Step 4: Fix capitalization after sentence boundaries
         text = fixCapitalization(text)
 
-        // Step 5: Final whitespace cleanup
+        // Step 5: Detect and format lists
+        text = formatLists(text)
+
+        // Step 6: Final whitespace cleanup
         text = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return text
@@ -253,6 +256,106 @@ enum AITextProcessor {
         }
 
         return String(chars)
+    }
+
+    // MARK: - Step 5: Detect and Format Lists
+
+    /// Detect spoken list patterns and format them as proper numbered/bulleted lists.
+    ///
+    /// Handles patterns like:
+    /// - "first... second... third..."
+    /// - "number one... number two..."
+    /// - "one,... two,... three,..."
+    /// - "point one... point two..."
+    private static func formatLists(_ text: String) -> String {
+        var result = text
+
+        // Pattern: "first, ... second, ... third, ..." (ordinal sequence)
+        let ordinals: [(pattern: String, number: Int)] = [
+            ("first(?:ly)?", 1), ("second(?:ly)?", 2), ("third(?:ly)?", 3),
+            ("fourth(?:ly)?", 4), ("fifth(?:ly)?", 5), ("sixth(?:ly)?", 6),
+            ("seventh(?:ly)?", 7), ("eighth(?:ly)?", 8), ("ninth(?:ly)?", 9),
+            ("tenth(?:ly)?", 10),
+        ]
+
+        // Check if text contains at least 2 sequential ordinals
+        var ordinalMatches: [(range: Range<String.Index>, number: Int, content: String)] = []
+        let lowered = result.lowercased()
+
+        for (pattern, number) in ordinals {
+            let fullPattern = "\\b\(pattern)[,:]?\\s+"
+            if let regex = try? NSRegularExpression(pattern: fullPattern, options: .caseInsensitive),
+               let match = regex.firstMatch(in: result, range: NSRange(result.startIndex..., in: result)),
+               let range = Range(match.range, in: result) {
+                // Find the content after this ordinal (up to the next ordinal or end)
+                ordinalMatches.append((range: range, number: number, content: ""))
+            }
+        }
+
+        // If we found 2+ sequential ordinals, format as numbered list
+        if ordinalMatches.count >= 2 {
+            // Sort by position in text
+            ordinalMatches.sort { $0.range.lowerBound < $1.range.lowerBound }
+
+            // Build formatted list
+            var formatted = ""
+            var preamble = String(result[result.startIndex..<ordinalMatches[0].range.lowerBound])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !preamble.isEmpty {
+                formatted += preamble + "\n\n"
+            }
+
+            for i in 0..<ordinalMatches.count {
+                let start = ordinalMatches[i].range.upperBound
+                let end = (i + 1 < ordinalMatches.count)
+                    ? ordinalMatches[i + 1].range.lowerBound
+                    : result.endIndex
+
+                let content = String(result[start..<end])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: ".,;"))
+                    .trimmingCharacters(in: .whitespaces)
+
+                if !content.isEmpty {
+                    formatted += "\(ordinalMatches[i].number). \(content)\n"
+                }
+            }
+
+            result = formatted.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // Pattern: "number one... number two..." or "point one..."
+        let numberWordPairs: [(pattern: String, num: String)] = [
+            ("(?:number|point)\\s+one[,:]?\\s+", "1"),
+            ("(?:number|point)\\s+two[,:]?\\s+", "2"),
+            ("(?:number|point)\\s+three[,:]?\\s+", "3"),
+            ("(?:number|point)\\s+four[,:]?\\s+", "4"),
+            ("(?:number|point)\\s+five[,:]?\\s+", "5"),
+        ]
+
+        var numberMatches = 0
+        for (pattern, _) in numberWordPairs {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+               regex.firstMatch(in: result, range: NSRange(result.startIndex..., in: result)) != nil {
+                numberMatches += 1
+            }
+        }
+
+        if numberMatches >= 2 {
+            for (pattern, num) in numberWordPairs {
+                if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+                    result = regex.stringByReplacingMatches(
+                        in: result,
+                        range: NSRange(result.startIndex..., in: result),
+                        withTemplate: "\n\(num). "
+                    )
+                }
+            }
+            // Clean up leading newline
+            result = result.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        return result
     }
 }
 
