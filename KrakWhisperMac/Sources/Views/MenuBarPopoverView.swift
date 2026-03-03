@@ -141,7 +141,7 @@ struct MenuBarPopoverView: View {
         .buttonStyle(.borderedProminent)
         .tint(dictationButtonTint)
         .disabled(!canToggleDictation)
-        .keyboardShortcut(.space, modifiers: [.command, .shift])
+        .keyboardShortcut("w", modifiers: [.command, .shift])
     }
 
     private var dictationButtonIcon: String {
@@ -240,7 +240,7 @@ struct MenuBarPopoverView: View {
 
     private var footerView: some View {
         HStack {
-            Text("⌘⇧Space to dictate")
+            Text("⌘⇧W to dictate")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
 

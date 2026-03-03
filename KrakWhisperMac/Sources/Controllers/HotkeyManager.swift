@@ -5,17 +5,17 @@ import Carbon.HIToolbox
 ///
 /// Uses `NSEvent.addGlobalMonitorForEvents` for when the app is NOT focused,
 /// and `NSEvent.addLocalMonitorForEvents` for when it IS focused.
-/// Default hotkey: ⌘⇧Space (Cmd+Shift+Space).
+/// Default hotkey: ⌘⇧W (Cmd+Shift+W).
 @MainActor
 final class HotkeyManager {
 
     // MARK: - Configuration
 
-    /// The key code for the hotkey (default: Space = 49).
+    /// The key code for the hotkey (default: W = 13).
     var keyCode: UInt16 {
         get {
             let defaults = UserDefaults.standard
-            guard defaults.object(forKey: "hotkeyKeyCode") != nil else { return 49 } // 49 = Space
+            guard defaults.object(forKey: "hotkeyKeyCode") != nil else { return 13 } // 13 = W
             return UInt16(defaults.integer(forKey: "hotkeyKeyCode"))
         }
         set {
@@ -94,7 +94,7 @@ final class HotkeyManager {
 
     // MARK: - Display
 
-    /// Human-readable string for the current hotkey (e.g., "⌘⇧Space").
+    /// Human-readable string for the current hotkey (e.g., "⌘⇧W").
     var hotkeyDisplayString: String {
         var parts: [String] = []
         if modifierFlags.contains(.control) { parts.append("⌃") }
@@ -169,6 +169,12 @@ final class HotkeyManager {
     }
 
     deinit {
-        unregister()
+        // Inline cleanup to avoid MainActor-isolated call from non-isolated deinit
+        if let globalMonitor {
+            NSEvent.removeMonitor(globalMonitor)
+        }
+        if let localMonitor {
+            NSEvent.removeMonitor(localMonitor)
+        }
     }
 }

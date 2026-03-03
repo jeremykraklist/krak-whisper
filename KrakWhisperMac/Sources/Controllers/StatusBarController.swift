@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import KrakWhisper
 
 /// Manages the NSStatusBar item and its popover.
 ///

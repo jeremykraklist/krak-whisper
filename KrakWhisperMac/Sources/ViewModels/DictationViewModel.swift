@@ -102,7 +102,7 @@ final class DictationViewModel: ObservableObject {
            let model = WhisperModelSize(rawValue: savedModel) {
             self.selectedModel = model
         } else {
-            self.selectedModel = .base
+            self.selectedModel = .small
         }
     }
 
