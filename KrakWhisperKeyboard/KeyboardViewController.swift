@@ -1,50 +1,22 @@
 #if os(iOS)
 import UIKit
-import AVFoundation
 
 // MARK: - KrakWhisper QWERTY Keyboard
-// Primary: App Group IPC (keyboard → main app Whisper → text)
-// Fallback: Contabo whisper.cpp API (if main app not responding)
-// Pure UIKit — stays under 42MB memory limit.
+// iOS keyboard extensions CANNOT access the microphone directly.
+// Mic button opens the main app (via URL scheme) which records + transcribes.
+// User swipes back to keyboard, which reads the result from App Group.
 
 final class KeyboardViewController: UIInputViewController {
     
     private enum KeyboardPage { case letters, numbers, symbols }
-    private enum RecordingState { case idle, waking, recording, transcribing }
     
-    // MARK: - Config
-    
+    // App Group for sharing data with main app
     private let appGroupID = "group.com.krakwhisper.shared"
-    private let whisperAPIURL = "http://157.173.203.33:8178/inference"
-    private let ipcTimeout: TimeInterval = 8 // seconds before fallback to API
-    private let wakeTimeout: TimeInterval = 3 // seconds to wait for app wake
-    
-    // Darwin notification names
-    private let wakeNotification = "com.krakwhisper.wake" as CFString
-    private let requestNotification = "com.krakwhisper.transcribe.request" as CFString
-    private let responseNotification = "com.krakwhisper.transcribe.response" as CFString
-    private let readyNotification = "com.krakwhisper.app.ready" as CFString
-    
-    // App Group file names
-    private let audioFileName = "keyboard-audio.wav"
-    private let requestFileName = "keyboard-request.json"
     private let resultFileName = "keyboard-result.json"
-    
-    // MARK: - State
     
     private var keyboardPage: KeyboardPage = .letters
     private var isShifted = true
-    private var recordingState: RecordingState = .idle
-    private var currentRequestId: String?
-    private var appIsReady = false
-    
-    // Audio
-    private var audioRecorder: AVAudioRecorder?
-    private var recordingURL: URL?
-    private let sampleRate: Double = 16_000
-    private var recordingDuration: TimeInterval = 0
-    private var durationTimer: Timer?
-    private var pollTimer: Timer?
+    private var pendingTranscription = false
     
     // UI
     private let containerView = UIView()
@@ -68,7 +40,6 @@ final class KeyboardViewController: UIInputViewController {
         [".",",","?","!","\'"]
     ]
     
-    // Shared container
     private var sharedURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID)
     }
@@ -84,38 +55,54 @@ final class KeyboardViewController: UIInputViewController {
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // Listen for transcription results and app ready signal
-        observeDarwin(responseNotification) { [weak self] in self?.handleIPCResponse() }
-        observeDarwin(readyNotification) { [weak self] in
-            self?.appIsReady = true
-            // If we were waiting for app to wake, start recording now
-            if self?.recordingState == .waking {
-                DispatchQueue.main.async { self?.startRecording() }
-            }
-        }
-        // Check if app already has a recent heartbeat
-        checkAppReady()
+        // Check if main app left a transcription result for us
+        checkForTranscriptionResult()
     }
     
-    override func viewDidDisappear(_ animated: Bool) {
-        super.viewDidDisappear(animated)
-        if recordingState == .recording { cancelRecording() }
-        CFNotificationCenterRemoveEveryObserver(
-            CFNotificationCenterGetDarwinNotifyCenter(), Unmanaged.passUnretained(self).toOpaque())
-        pollTimer?.invalidate()
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        checkForTranscriptionResult()
     }
     
-    // MARK: - App Ready Check
+    // MARK: - Check for results from main app
     
-    private func checkAppReady() {
-        // Check if app wrote a heartbeat recently (within 30 seconds)
-        guard let url = sharedURL?.appendingPathComponent("app-heartbeat.txt"),
+    private func checkForTranscriptionResult() {
+        guard let url = sharedURL?.appendingPathComponent(resultFileName),
+              FileManager.default.fileExists(atPath: url.path),
               let data = try? Data(contentsOf: url),
-              let str = String(data: data, encoding: .utf8),
-              let ts = Double(str) else {
-            appIsReady = false; return
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let text = json["text"] as? String,
+              let consumed = json["consumed"] as? Bool,
+              consumed == false else { return }
+        
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if !trimmed.isEmpty {
+            textDocumentProxy.insertText(trimmed + " ")
+            let durationMs = json["durationMs"] as? Int ?? 0
+            let dur = String(format: "%.1fs", Double(durationMs) / 1000)
+            statusLabel.text = "\u{2713} Whisper \u{00B7} \(dur)"
+            statusLabel.textColor = .systemGreen
+        } else if let error = json["error"] as? String, !error.isEmpty {
+            statusLabel.text = "\u{26A0}\u{FE0F} \(error)"
+            statusLabel.textColor = .systemRed
+        } else {
+            statusLabel.text = "No speech detected"
+            statusLabel.textColor = .systemOrange
         }
-        appIsReady = Date().timeIntervalSince1970 - ts < 30
+        
+        // Mark as consumed so we don't insert twice
+        var updated = json
+        updated["consumed"] = true
+        if let updatedData = try? JSONSerialization.data(withJSONObject: updated) {
+            try? updatedData.write(to: url)
+        }
+        
+        // Reset status after delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            self?.statusLabel.text = "KrakWhisper"
+            self?.statusLabel.textColor = .secondaryLabel
+        }
     }
     
     // MARK: - Setup
@@ -209,7 +196,8 @@ final class KeyboardViewController: UIInputViewController {
         bot.addArrangedSubview(pg)
         
         let mic = UIButton(type: .system)
-        updateMic(mic)
+        mic.setImage(UIImage(systemName: "mic.fill"), for: .normal)
+        mic.backgroundColor = .systemGray3; mic.tintColor = .label; mic.layer.cornerRadius = 5
         mic.widthAnchor.constraint(equalToConstant: 40).isActive = true
         mic.addTarget(self, action: #selector(micTapped), for: .touchUpInside)
         bot.addArrangedSubview(mic)
@@ -263,24 +251,6 @@ final class KeyboardViewController: UIInputViewController {
         return b
     }
     
-    private func updateMic(_ b: UIButton) {
-        switch recordingState {
-        case .idle:
-            b.setImage(UIImage(systemName: "mic.fill"), for: .normal)
-            b.backgroundColor = .systemGray3; b.tintColor = .label
-        case .waking:
-            b.setImage(UIImage(systemName: "arrow.up.forward.app"), for: .normal)
-            b.backgroundColor = .systemOrange; b.tintColor = .white
-        case .recording:
-            b.setImage(UIImage(systemName: "stop.fill"), for: .normal)
-            b.backgroundColor = .systemRed; b.tintColor = .white
-        case .transcribing:
-            b.setImage(UIImage(systemName: "waveform"), for: .normal)
-            b.backgroundColor = .systemBlue; b.tintColor = .white
-        }
-        b.layer.cornerRadius = 5
-    }
-    
     // MARK: - Key Actions
     
     @objc private func keyTapped(_ s: UIButton) {
@@ -300,342 +270,48 @@ final class KeyboardViewController: UIInputViewController {
         keyboardPage = (keyboardPage == .numbers) ? .symbols : .numbers; buildKeyRows()
     }
     
-    // MARK: - Mic Flow
+    // MARK: - Mic — Opens Main App
     
     @objc private func micTapped() {
-        switch recordingState {
-        case .idle: initiateRecording()
-        case .waking: break // Still waiting for app
-        case .recording: stopAndTranscribe()
-        case .transcribing: break
-        }
-    }
-    
-    /// Step 1: Wake the main app if needed, then start recording
-    private func initiateRecording() {
-        if appIsReady {
-            // App is already running — go straight to recording
-            startRecording()
-        } else {
-            // Send wake signal to main app
-            recordingState = .waking
-            if let m = micButton { updateMic(m) }
-            statusLabel.text = "🔄 Opening KrakWhisper..."
-            statusLabel.textColor = .systemOrange
-            
-            postDarwin(wakeNotification)
-            
-            // Try to open the main app via URL scheme
-            if let url = URL(string: "krakwhisper://wake") {
-                // Keyboard extensions can't open URLs directly, but we try via shared app
-                // The Darwin notification is the real mechanism
-                let _ = url // suppress warning
-            }
-            
-            // Wait for ready signal or timeout
-            DispatchQueue.main.asyncAfter(deadline: .now() + wakeTimeout) { [weak self] in
-                guard let self, self.recordingState == .waking else { return }
-                // App didn't respond — start recording anyway (will use API fallback)
-                self.appIsReady = false
-                self.startRecording()
-            }
-        }
-    }
-    
-    /// Step 2: Record audio
-    private func startRecording() {
-        recordingDuration = 0
-        
-        // Check Full Access is enabled (required for mic + network)
         guard hasFullAccess else {
-            statusLabel.text = "⚠️ Enable Full Access in Settings"
+            statusLabel.text = "\u{26A0}\u{FE0F} Enable Full Access in Settings"
             statusLabel.textColor = .systemRed
-            recordingState = .idle; if let m = micButton { updateMic(m) }
             return
         }
         
-        let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
-            try session.setActive(true, options: [])
-        } catch {
-            statusLabel.text = "⚠️ \(error.localizedDescription)"
-            statusLabel.textColor = .systemRed
-            recordingState = .idle; if let m = micButton { updateMic(m) }
-            return
+        // Clear any old result
+        if let url = sharedURL?.appendingPathComponent(resultFileName) {
+            try? FileManager.default.removeItem(at: url)
         }
         
-        // AVAudioRecorder is more reliable than AVAudioEngine in keyboard extensions
-        let tempDir = FileManager.default.temporaryDirectory
-        let url = tempDir.appendingPathComponent("kw-rec.wav")
-        recordingURL = url
-        
-        let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatLinearPCM),
-            AVSampleRateKey: sampleRate,
-            AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 16,
-            AVLinearPCMIsFloatKey: false,
-            AVLinearPCMIsBigEndianKey: false,
-        ]
-        
-        do {
-            let recorder = try AVAudioRecorder(url: url, settings: settings)
-            recorder.record()
-            audioRecorder = recorder
-            recordingState = .recording
-            if let m = micButton { updateMic(m) }
-            durationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-                guard let self, self.recordingState == .recording else { return }
-                self.recordingDuration += 0.1
-                self.statusLabel.text = String(format: "🎤 %.1fs", self.recordingDuration)
-                self.statusLabel.textColor = .systemRed
-                if self.recordingDuration >= 60 { self.stopAndTranscribe() }
-            }
-        } catch {
-            statusLabel.text = "Rec: \(error.localizedDescription)"
-            statusLabel.textColor = .systemRed
-            recordingState = .idle; if let m = micButton { updateMic(m) }
-        }
-    }
-    
-    /// Step 3: Stop recording and transcribe (IPC primary, API fallback)
-    private func stopAndTranscribe() {
-        audioRecorder?.stop(); audioRecorder = nil
-        durationTimer?.invalidate(); durationTimer = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        
-        guard recordingDuration > 0.2 else {
-            statusLabel.text = "Too short"; statusLabel.textColor = .systemOrange
-            recordingState = .idle; if let m = micButton { updateMic(m) }; return
-        }
-        
-        recordingState = .transcribing
-        if let m = micButton { updateMic(m) }
-        
-        guard let recURL = recordingURL, let wavData = try? Data(contentsOf: recURL) else {
-            handleError("No recording data"); return
-        }
-        
-        // Try IPC first
-        if appIsReady, let audioURL = sharedURL?.appendingPathComponent(audioFileName),
-           let reqURL = sharedURL?.appendingPathComponent(requestFileName) {
-            
-            statusLabel.text = "⏳ Whisper (on-device)..."
-            statusLabel.textColor = .systemBlue
-            
-            do {
-                try wavData.write(to: audioURL)
-                let rid = UUID().uuidString
-                currentRequestId = rid
-                let req: [String: Any] = ["id": rid, "timestamp": Date().timeIntervalSince1970, "audioFile": audioFileName]
-                try JSONSerialization.data(withJSONObject: req).write(to: reqURL)
-                
-                // Clear old result
-                if let resURL = sharedURL?.appendingPathComponent(resultFileName) {
-                    try? FileManager.default.removeItem(at: resURL)
-                }
-                
-                // Notify main app
-                postDarwin(requestNotification)
-                
-                // Poll for result
-                let startTime = Date()
-                pollTimer?.invalidate()
-                pollTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
-                    self?.checkIPCResult()
-                }
-                
-                // Fallback to API after timeout
-                DispatchQueue.main.asyncAfter(deadline: .now() + ipcTimeout) { [weak self] in
-                    guard let self, self.recordingState == .transcribing,
-                          self.currentRequestId == rid else { return }
-                    // IPC didn't respond — fallback to Contabo API
-                    self.pollTimer?.invalidate()
-                    self.statusLabel.text = "⏳ Whisper (cloud)..."
-                    self.statusLabel.textColor = .systemCyan
-                    self.sendToWhisperAPI(wavData: wavData)
-                }
-                return
-            } catch {
-                // IPC setup failed — fall through to API
+        // Write intent so main app knows to start recording immediately
+        if let intentURL = sharedURL?.appendingPathComponent("keyboard-intent.json") {
+            let intent: [String: Any] = ["action": "record", "timestamp": Date().timeIntervalSince1970]
+            if let data = try? JSONSerialization.data(withJSONObject: intent) {
+                try? data.write(to: intentURL)
             }
         }
         
-        // Direct to API (no IPC available)
-        statusLabel.text = "⏳ Whisper (cloud)..."
-        statusLabel.textColor = .systemCyan
-        sendToWhisperAPI(wavData: wavData)
-    }
-    
-    // MARK: - IPC Response
-    
-    private func handleIPCResponse() {
-        DispatchQueue.main.async { self.checkIPCResult() }
-    }
-    
-    private func checkIPCResult() {
-        guard recordingState == .transcribing,
-              let url = sharedURL?.appendingPathComponent(resultFileName),
-              FileManager.default.fileExists(atPath: url.path),
-              let data = try? Data(contentsOf: url),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let rid = json["id"] as? String,
-              rid == currentRequestId else { return }
+        statusLabel.text = "\u{1F3A4} Opening KrakWhisper..."
+        statusLabel.textColor = .systemBlue
         
-        pollTimer?.invalidate()
-        
-        let text = (json["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let durationMs = json["durationMs"] as? Int ?? 0
-        let error = json["error"] as? String
-        
-        if let err = error, !err.isEmpty {
-            // IPC error — try API fallback
-            statusLabel.text = "⏳ Whisper (cloud)..."
-            statusLabel.textColor = .systemCyan
-            if let ru = recordingURL, let wd = try? Data(contentsOf: ru) { sendToWhisperAPI(wavData: wd) } else { handleError("No data") }
-        } else if !text.isEmpty {
-            textDocumentProxy.insertText(text + " ")
-            let dur = String(format: "%.1fs", Double(durationMs) / 1000)
-            statusLabel.text = "✓ Whisper (local) · \(dur)"
-            statusLabel.textColor = .systemGreen
-            finishTranscription()
-        } else {
-            statusLabel.text = "No speech detected"
-            statusLabel.textColor = .systemOrange
-            finishTranscription()
-        }
-        
-        try? FileManager.default.removeItem(at: url)
-    }
-    
-    // MARK: - Whisper API Fallback
-    
-    private func sendToWhisperAPI(wavData: Data) {
-        guard let url = URL(string: whisperAPIURL) else {
-            handleError("Invalid API URL"); return
-        }
-        
-        let boundary = "KW-\(UUID().uuidString)"
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 30
-        
-        var body = Data()
-        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\nContent-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
-        body.append(wavData)
-        body.append("\r\n--\(boundary)\r\nContent-Disposition: form-data; name=\"response_format\"\r\n\r\njson\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-        request.httpBody = body
-        
-        let startTime = Date()
-        
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                
-                if let error {
-                    self.handleError((error as NSError).code == NSURLErrorTimedOut ? "Timeout" : "Network error")
-                    return
+        // Open main app via URL scheme
+        // Keyboard extensions can open URLs through the responder chain
+        if let url = URL(string: "krakwhisper://record") {
+            var responder: UIResponder? = self
+            while let r = responder {
+                if let app = r as? UIApplication {
+                    app.open(url, options: [:], completionHandler: nil)
+                    break
                 }
-                guard let data, let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                    self.handleError("Server error"); return
+                // Try the selector approach (works in keyboard extensions)
+                if r.responds(to: NSSelectorFromString("openURL:")) {
+                    r.perform(NSSelectorFromString("openURL:"), with: url)
+                    break
                 }
-                
-                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let text = json["text"] as? String {
-                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if trimmed.isEmpty {
-                        self.statusLabel.text = "No speech detected"
-                        self.statusLabel.textColor = .systemOrange
-                    } else {
-                        self.textDocumentProxy.insertText(trimmed + " ")
-                        let dur = String(format: "%.1fs", Date().timeIntervalSince(startTime))
-                        self.statusLabel.text = "✓ Whisper (cloud) · \(dur)"
-                        self.statusLabel.textColor = .systemGreen
-                    }
-                } else {
-                    self.handleError("Bad response")
-                }
-                self.finishTranscription()
+                responder = r.next
             }
-        }.resume()
-    }
-    
-    // MARK: - Helpers
-    
-    private func finishTranscription() {
-        recordingState = .idle
-        if let m = micButton { updateMic(m) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-            guard let self, self.recordingState == .idle else { return }
-            self.statusLabel.text = "KrakWhisper"
-            self.statusLabel.textColor = .secondaryLabel
         }
     }
-    
-    private func handleError(_ msg: String) {
-        statusLabel.text = "⚠️ \(msg)"
-        statusLabel.textColor = .systemRed
-        recordingState = .idle
-        if let m = micButton { updateMic(m) }
-    }
-    
-    private func cancelRecording() {
-        audioRecorder?.stop(); audioRecorder = nil
-        durationTimer?.invalidate(); pollTimer?.invalidate()
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        recordingState = .idle
-        if let m = micButton { updateMic(m) }
-    }
-    
-    // MARK: - Darwin Notifications
-    
-    private func postDarwin(_ name: CFString) {
-        CFNotificationCenterPostNotification(
-            CFNotificationCenterGetDarwinNotifyCenter(),
-            CFNotificationName(name), nil, nil, true)
-    }
-    
-    private func observeDarwin(_ name: CFString, callback: @escaping () -> Void) {
-        let center = CFNotificationCenterGetDarwinNotifyCenter()
-        let observer = Unmanaged.passUnretained(self).toOpaque()
-        // Store callback in a property we can look up
-        darwinCallbacks[String(describing: name)] = callback
-        CFNotificationCenterAddObserver(center, observer,
-            { _, observer, notifName, _, _ in
-                guard let observer, let notifName else { return }
-                let vc = Unmanaged<KeyboardViewController>.fromOpaque(observer).takeUnretainedValue()
-                let key = String(describing: notifName.rawValue)
-                if let cb = vc.darwinCallbacks[key] {
-                    DispatchQueue.main.async { cb() }
-                }
-            }, name, nil, .deliverImmediately)
-    }
-    
-    private var darwinCallbacks: [String: () -> Void] = [:]
-    
-    // MARK: - WAV Encoding
-    
-    private func encodeWAV(samples: [Float]) -> Data {
-        let dataSize = samples.count * 2
-        var d = Data()
-        d.append(contentsOf: "RIFF".utf8)
-        appendU32(&d, UInt32(36 + dataSize))
-        d.append(contentsOf: "WAVE".utf8)
-        d.append(contentsOf: "fmt ".utf8)
-        appendU32(&d, 16); appendU16(&d, 1); appendU16(&d, 1)
-        appendU32(&d, 16000); appendU32(&d, 32000)
-        appendU16(&d, 2); appendU16(&d, 16)
-        d.append(contentsOf: "data".utf8)
-        appendU32(&d, UInt32(dataSize))
-        for s in samples {
-            let v = Int16(max(-1, min(1, s)) * 32767)
-            withUnsafeBytes(of: v.littleEndian) { d.append(contentsOf: $0) }
-        }
-        return d
-    }
-    private func appendU32(_ d: inout Data, _ v: UInt32) { withUnsafeBytes(of: v.littleEndian) { d.append(contentsOf: $0) } }
-    private func appendU16(_ d: inout Data, _ v: UInt16) { withUnsafeBytes(of: v.littleEndian) { d.append(contentsOf: $0) } }
 }
 #endif

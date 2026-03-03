@@ -7,6 +7,7 @@ import SwiftData
 struct KrakWhisperApp: App {
     @StateObject private var downloadManager = ModelDownloadManager.shared
     @AppStorage("krakwhisper.onboardingComplete") private var onboardingComplete = false
+    @State private var showKeyboardRecorder = false
 
     var body: some Scene {
         WindowGroup {
@@ -21,12 +22,17 @@ struct KrakWhisperApp: App {
                 }
             }
             .onAppear {
-                // Sync all downloaded models to shared App Group container
-                // so the keyboard extension can access them
                 downloadManager.syncModelsToSharedContainer()
-                
-                // Listen for keyboard extension transcription requests via App Group IPC
                 KeyboardTranscriptionService.shared.startListening()
+            }
+            .onOpenURL { url in
+                // Handle krakwhisper://record from keyboard extension
+                if url.host == "record" || url.path == "/record" {
+                    showKeyboardRecorder = true
+                }
+            }
+            .fullScreenCover(isPresented: $showKeyboardRecorder) {
+                KeyboardRecordView()
             }
         }
         .modelContainer(for: TranscriptionRecord.self)
