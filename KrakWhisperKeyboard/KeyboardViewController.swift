@@ -26,7 +26,8 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     /// Current keyboard mode (voice dictation or QWERTY typing).
-    private var keyboardMode: KeyboardMode = .text {
+    /// Default to voice mode — it's lighter on memory and the primary use case.
+    private var keyboardMode: KeyboardMode = .voice {
         didSet {
             updateHeightConstraint()
             updateView()
@@ -114,11 +115,14 @@ final class KeyboardViewController: UIInputViewController {
         let height = hosting.view.heightAnchor.constraint(equalToConstant: keyboardMode == .text ? 260 : 200)
         self.heightConstraint = height
 
+        // Pin to top, leading, trailing + fixed height.
+        // Do NOT pin bottom — the height constraint defines the size,
+        // and pinning both top+bottom+height causes a constraint conflict
+        // that iOS resolves by killing the extension.
         NSLayoutConstraint.activate([
             hosting.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             hosting.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             hosting.view.topAnchor.constraint(equalTo: view.topAnchor),
-            hosting.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             height,
         ])
 
