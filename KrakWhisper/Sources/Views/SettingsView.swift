@@ -77,6 +77,4 @@ struct SettingsView: View {
     }
 }
 
-#Preview {
-    SettingsView(downloadManager: .shared)
-}
+// Preview requires Xcode — #Preview macro not available in SPM CLI builds

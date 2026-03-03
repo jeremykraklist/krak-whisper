@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import AVFoundation
 
@@ -313,3 +314,4 @@ struct OnboardingView: View {
     }
 }
 
+#endif // os(iOS)

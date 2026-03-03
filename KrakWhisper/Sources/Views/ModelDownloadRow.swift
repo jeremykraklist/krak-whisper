@@ -26,7 +26,7 @@ struct ModelDownloadRow: View {
                 Text(model.subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text(model.fileSizeDescription)
+                Text(ByteCountFormatter.string(fromByteCount: model.approximateSize, countStyle: .file))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }

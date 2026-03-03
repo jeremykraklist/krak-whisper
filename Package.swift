@@ -8,7 +8,8 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
-        .library(name: "KrakWhisper", targets: ["KrakWhisper"])
+        .library(name: "KrakWhisper", targets: ["KrakWhisper"]),
+        .executable(name: "KrakWhisperMac", targets: ["KrakWhisperMac"])
     ],
     dependencies: [
         .package(url: "https://github.com/exPHAT/SwiftWhisper.git", from: "1.2.0")
@@ -20,6 +21,11 @@ let package = Package(
                 .product(name: "SwiftWhisper", package: "SwiftWhisper")
             ],
             path: "KrakWhisper/Sources"
+        ),
+        .executableTarget(
+            name: "KrakWhisperMac",
+            dependencies: ["KrakWhisper"],
+            path: "KrakWhisperMac/Sources"
         ),
         .testTarget(
             name: "KrakWhisperTests",

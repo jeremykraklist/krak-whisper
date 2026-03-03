@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import SwiftData
 
@@ -496,3 +497,4 @@ struct FlowLayout: Layout {
     return HistoryView()
         .modelContainer(container)
 }
+#endif // os(iOS)
