@@ -1,0 +1,62 @@
+{
+  "name": "krakwhisper-windows",
+  "version": "1.0.0",
+  "description": "KrakWhisper — Local voice dictation for Windows using whisper.cpp",
+  "main": "src/main.js",
+  "author": "Jeremiah Krakowski",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win",
+    "build:nsis": "electron-builder --win nsis",
+    "build:portable": "electron-builder --win portable",
+    "lint": "eslint src/",
+    "test": "jest --passWithNoTests"
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0",
+    "node-wav": "^0.0.2"
+  },
+  "devDependencies": {
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1",
+    "eslint": "^8.56.0",
+    "jest": "^29.7.0"
+  },
+  "build": {
+    "appId": "com.krakwhisper.windows",
+    "productName": "KrakWhisper",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "bin/",
+        "to": "bin/",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico"
+    }
+  }
+}

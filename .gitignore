@@ -25,3 +25,11 @@ Packages/
 
 # CocoaPods (if ever used)
 Pods/
+
+# Electron / Node.js
+electron/node_modules/
+electron/dist/
+electron/bin/*.exe
+electron/bin/*.bin
+!electron/bin/.gitkeep
+npm-debug.log*
