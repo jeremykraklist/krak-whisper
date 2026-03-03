@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://new.jeremiahkrakowski.com">
   <title>KrakWhisper</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -28,7 +28,7 @@
     <div id="main-panel" class="panel">
       <!-- Record Button -->
       <div class="record-section">
-        <button id="record-btn" class="record-btn" title="Toggle Recording (Ctrl+Shift+Space)">
+        <button id="record-btn" class="record-btn" title="Toggle Recording (Ctrl+Shift+W)">
           <span class="record-icon" id="record-icon">🎙</span>
         </button>
         <p id="record-status" class="record-status">Press to record</p>
@@ -48,7 +48,7 @@
       <!-- Status Bar -->
       <div class="status-bar">
         <span id="model-indicator" class="indicator">Model: —</span>
-        <span id="hotkey-indicator" class="indicator">Hotkey: Ctrl+Shift+Space</span>
+        <span id="hotkey-indicator" class="indicator">Hotkey: Ctrl+Shift+W</span>
       </div>
     </div>
 

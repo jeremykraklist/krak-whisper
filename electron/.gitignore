@@ -3,9 +3,12 @@ dist/
 *.log
 .env
 
-# Downloaded models (too large for git)
+# Whisper binaries (too large for git, copied at setup time)
 bin/*.exe
+bin/*.dll
 bin/*.bin
+bin/*.so
+bin/*.dylib
 !bin/.gitkeep
 
 # OS files

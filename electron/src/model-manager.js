@@ -18,28 +18,37 @@ const MAX_REDIRECTS = 5;
 /** Download timeout in ms (10 minutes for large models) */
 const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 
+/** CDN base URL for model downloads */
+const CDN_BASE = 'https://new.jeremiahkrakowski.com/models';
+
 /** Allowed download hosts for security */
-const ALLOWED_HOSTS = ['huggingface.co', 'cdn-lfs.huggingface.co', 'cdn-lfs-us-1.huggingface.co'];
+const ALLOWED_HOSTS = ['new.jeremiahkrakowski.com', 'jeremiahkrakowski.com'];
 
 /** @type {ModelInfo[]} */
 const AVAILABLE_MODELS = [
   {
     name: 'tiny.en',
     filename: 'ggml-tiny.en.bin',
-    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin',
+    url: `${CDN_BASE}/ggml-tiny.en.bin`,
     size: 75,
   },
   {
     name: 'base.en',
     filename: 'ggml-base.en.bin',
-    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin',
+    url: `${CDN_BASE}/ggml-base.en.bin`,
     size: 142,
   },
   {
     name: 'small.en',
     filename: 'ggml-small.en.bin',
-    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin',
+    url: `${CDN_BASE}/ggml-small.en.bin`,
     size: 466,
+  },
+  {
+    name: 'medium.en',
+    filename: 'ggml-medium.en.bin',
+    url: `${CDN_BASE}/ggml-medium.en.bin`,
+    size: 1500,
   },
 ];
 
@@ -134,13 +143,9 @@ class ModelManager {
           return;
         }
 
-        // Validate URL host for security
+        // Validate URL format (allow redirects to any host — CDN may redirect)
         try {
-          const parsed = new URL(url);
-          if (!ALLOWED_HOSTS.some((h) => parsed.hostname === h || parsed.hostname.endsWith('.' + h))) {
-            // Allow the redirect but log a warning
-            console.warn(`Download redirected to unexpected host: ${parsed.hostname}`);
-          }
+          new URL(url);
         } catch {
           clearTimeout(overallTimeout);
           reject(new Error(`Invalid redirect URL: ${url}`));

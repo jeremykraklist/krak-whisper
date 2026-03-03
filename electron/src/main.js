@@ -1,4 +1,5 @@
 const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, dialog, clipboard, Notification } = require('electron');
+const { execFile } = require('child_process');
 const path = require('path');
 const Store = require('electron-store');
 const { AudioRecorder } = require('./audio-recorder');
@@ -8,9 +9,10 @@ const { ModelManager } = require('./model-manager');
 /** @type {Store} */
 const store = new Store({
   defaults: {
-    model: 'tiny.en',
-    hotkey: 'CommandOrControl+Shift+Space',
+    model: 'small.en',
+    hotkey: 'CommandOrControl+Shift+W',
     autoCopy: true,
+    autoPaste: true,
     showNotification: true,
     firstLaunch: true,
   },
@@ -101,6 +103,10 @@ function updateTrayMenu() {
       label: `Hotkey: ${hotkey}`,
       enabled: false,
     },
+    {
+      label: `Auto-paste: ${store.get('autoPaste') ? 'On' : 'Off'}`,
+      enabled: false,
+    },
     { type: 'separator' },
     {
       label: 'Open KrakWhisper',
@@ -131,8 +137,7 @@ function updateTrayMenu() {
 // ─── Windows ─────────────────────────────────────────────────────────
 
 /**
- * Safely send a message to the main window, handling the race where
- * the page may or may not have finished loading yet.
+ * Safely send a message to the main window.
  * @param {string} channel
  * @param {*} [data]
  */
@@ -159,9 +164,10 @@ function createMainWindow() {
 
   mainWindow = new BrowserWindow({
     width: 480,
-    height: 600,
+    height: 640,
     resizable: true,
     title: 'KrakWhisper',
+    icon: path.join(__dirname, '..', 'assets', 'tray-icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -169,7 +175,7 @@ function createMainWindow() {
     },
   });
 
-  mainWindow.loadFile(path.join(__dirname, '..', 'src', 'renderer', 'index.html'));
+  mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -183,10 +189,11 @@ function createSettingsWindow() {
   }
 
   settingsWindow = new BrowserWindow({
-    width: 420,
-    height: 500,
+    width: 440,
+    height: 560,
     resizable: false,
     title: 'KrakWhisper Settings',
+    icon: path.join(__dirname, '..', 'assets', 'tray-icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -194,11 +201,33 @@ function createSettingsWindow() {
     },
   });
 
-  settingsWindow.loadFile(path.join(__dirname, '..', 'src', 'renderer', 'settings.html'));
+  settingsWindow.loadFile(path.join(__dirname, 'renderer', 'settings.html'));
 
   settingsWindow.on('closed', () => {
     settingsWindow = null;
   });
+}
+
+// ─── Auto-paste ──────────────────────────────────────────────────────
+
+/**
+ * Simulate Ctrl+V keypress to paste from clipboard at cursor position.
+ * Uses PowerShell + System.Windows.Forms.SendKeys on Windows.
+ */
+function simulatePaste() {
+  if (process.platform !== 'win32') return;
+
+  // Small delay to let the clipboard settle, then simulate Ctrl+V
+  setTimeout(() => {
+    const psScript = `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')`;
+    execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
+      timeout: 5000,
+    }, (err) => {
+      if (err) {
+        console.error('Auto-paste failed:', err.message);
+      }
+    });
+  }, 150);
 }
 
 // ─── Recording ───────────────────────────────────────────────────────
@@ -263,9 +292,17 @@ async function stopRecording() {
 
     if (text && text.trim()) {
       const trimmed = text.trim();
+
+      // Auto-copy to clipboard
       if (store.get('autoCopy')) {
         clipboard.writeText(trimmed);
       }
+
+      // Auto-paste at cursor position
+      if (store.get('autoPaste') && store.get('autoCopy')) {
+        simulatePaste();
+      }
+
       broadcastResult(trimmed);
 
       if (store.get('showNotification')) {
@@ -306,7 +343,7 @@ function broadcastStatus(status) {
 // ─── Hotkey ──────────────────────────────────────────────────────────
 
 /**
- * Register the global hotkey. Returns true if registration succeeded.
+ * Register the global hotkey.
  * @returns {boolean}
  */
 function registerHotkey() {
@@ -332,6 +369,7 @@ ipcMain.handle('get-settings', () => {
     model: store.get('model'),
     hotkey: store.get('hotkey'),
     autoCopy: store.get('autoCopy'),
+    autoPaste: store.get('autoPaste'),
     showNotification: store.get('showNotification'),
   };
 });
@@ -341,14 +379,14 @@ ipcMain.handle('save-settings', (_event, settings) => {
 
   if (settings.model) store.set('model', settings.model);
   if (typeof settings.autoCopy === 'boolean') store.set('autoCopy', settings.autoCopy);
+  if (typeof settings.autoPaste === 'boolean') store.set('autoPaste', settings.autoPaste);
   if (typeof settings.showNotification === 'boolean') store.set('showNotification', settings.showNotification);
 
-  // Handle hotkey change — validate and report registration result
+  // Handle hotkey change
   if (settings.hotkey) {
     store.set('hotkey', settings.hotkey);
     const registered = registerHotkey();
     if (!registered) {
-      // Rollback to previous hotkey on failure
       store.set('hotkey', previousHotkey);
       registerHotkey();
       return { success: false, error: `Hotkey "${settings.hotkey}" could not be registered. It may be in use by another application.` };

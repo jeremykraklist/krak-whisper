@@ -91,14 +91,15 @@
           <label for="model-select">Whisper Model</label>
           <select id="model-select">
             <option value="tiny.en">tiny.en (~75 MB) — Fastest</option>
-            <option value="base.en">base.en (~142 MB) — Balanced</option>
-            <option value="small.en">small.en (~466 MB) — Most Accurate</option>
+            <option value="base.en">base.en (~142 MB) — Fast</option>
+            <option value="small.en">small.en (~466 MB) — Balanced</option>
+            <option value="medium.en">medium.en (~1.5 GB) — Most Accurate</option>
           </select>
         </div>
 
         <div class="form-group">
           <label for="hotkey-input">Global Hotkey</label>
-          <input type="text" id="hotkey-input" placeholder="e.g. CommandOrControl+Shift+Space" readonly>
+          <input type="text" id="hotkey-input" placeholder="e.g. CommandOrControl+Shift+W" readonly>
           <p class="description" style="margin: 0;">Click and press your desired key combination</p>
         </div>
 
@@ -106,6 +107,13 @@
           <div class="checkbox-group">
             <input type="checkbox" id="auto-copy" checked>
             <label for="auto-copy">Auto-copy transcription to clipboard</label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="checkbox-group">
+            <input type="checkbox" id="auto-paste" checked>
+            <label for="auto-paste">Auto-paste at cursor position (Ctrl+V)</label>
           </div>
         </div>
 

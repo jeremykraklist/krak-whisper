@@ -2,6 +2,7 @@
 const modelSelect = document.getElementById('model-select');
 const hotkeyInput = document.getElementById('hotkey-input');
 const autoCopyCheckbox = document.getElementById('auto-copy');
+const autoPasteCheckbox = document.getElementById('auto-paste');
 const showNotificationCheckbox = document.getElementById('show-notification');
 const settingsForm = document.getElementById('settings-form');
 const saveStatus = document.getElementById('save-status');
@@ -16,6 +17,7 @@ async function init() {
   modelSelect.value = settings.model;
   hotkeyInput.value = settings.hotkey;
   autoCopyCheckbox.checked = settings.autoCopy;
+  autoPasteCheckbox.checked = settings.autoPaste !== false; // default true
   showNotificationCheckbox.checked = settings.showNotification;
 }
 
@@ -32,16 +34,13 @@ hotkeyInput.addEventListener('keydown', (e) => {
   // Add the actual key (if it's not just a modifier)
   const key = e.key;
   if (!MODIFIER_KEYS.has(key)) {
-    // Normalize key names for Electron accelerator format
     const normalizedKey = key === ' ' ? 'Space' : key.length === 1 ? key.toUpperCase() : key;
     parts.push(normalizedKey);
 
-    // Only update if we have at least one modifier + one non-modifier key
     if (parts.length >= 2) {
       hotkeyInput.value = parts.join('+');
     }
   }
-  // If only modifiers are pressed, don't update — wait for a non-modifier key
 });
 
 // ─── Save ────────────────────────────────────────────────────────────
@@ -68,6 +67,7 @@ settingsForm.addEventListener('submit', async (e) => {
     model: modelSelect.value,
     hotkey: hotkeyInput.value,
     autoCopy: autoCopyCheckbox.checked,
+    autoPaste: autoPasteCheckbox.checked,
     showNotification: showNotificationCheckbox.checked,
   };
 

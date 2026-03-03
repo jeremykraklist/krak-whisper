@@ -4,14 +4,13 @@ const fs = require('fs');
 const os = require('os');
 
 /**
- * WhisperEngine — Transcribes audio using the whisper.cpp binary.
+ * WhisperEngine — Transcribes audio using the whisper-cli.exe binary.
  *
- * Strategy: We ship a pre-built `whisper-cpp` binary (or build from source)
- * inside `electron/bin/`. The engine writes the audio buffer to a temp WAV file,
- * runs whisper.cpp CLI against it, and returns the transcribed text.
+ * Uses the pre-built whisper.cpp CLI binary to transcribe WAV audio files.
+ * The binary is bundled in `electron/bin/` along with required DLLs
+ * (whisper.dll, ggml-cpu.dll).
  *
- * For distribution, the whisper.cpp binary is bundled via electron-builder's
- * `extraResources` config. Users can also supply their own binary path.
+ * Usage: whisper-cli.exe -m <model.bin> -f <audio.wav> --no-gpu -t 8
  */
 class WhisperEngine {
   /**
@@ -24,7 +23,7 @@ class WhisperEngine {
   /**
    * Transcribe a PCM audio buffer (16-bit, 16kHz, mono).
    * @param {Buffer} audioBuffer - Raw PCM audio data
-   * @param {string} modelName - Name of the model to use (e.g. 'tiny.en')
+   * @param {string} modelName - Name of the model to use (e.g. 'small.en')
    * @returns {Promise<string>} Transcribed text
    */
   async transcribe(audioBuffer, modelName) {
@@ -36,15 +35,14 @@ class WhisperEngine {
     // Write audio to temp WAV file
     const tempDir = os.tmpdir();
     const wavPath = path.join(tempDir, `krakwhisper-${Date.now()}.wav`);
-    const txtPath = wavPath + '.txt';
 
     try {
       this._writeWav(wavPath, audioBuffer);
       const text = await this._runWhisper(wavPath, modelPath);
       return text;
     } finally {
-      // Clean up all temp files
-      for (const tempFile of [wavPath, txtPath]) {
+      // Clean up temp files
+      for (const tempFile of [wavPath, wavPath + '.txt']) {
         try {
           if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
         } catch {
@@ -94,7 +92,7 @@ class WhisperEngine {
   }
 
   /**
-   * Run whisper.cpp binary and return transcribed text.
+   * Run whisper-cli.exe and return transcribed text.
    * @param {string} wavPath - Path to WAV file
    * @param {string} modelPath - Path to model file
    * @returns {Promise<string>}
@@ -102,42 +100,73 @@ class WhisperEngine {
   _runWhisper(wavPath, modelPath) {
     return new Promise((resolve, reject) => {
       const binaryPath = this._getWhisperBinaryPath();
+      const binDir = path.dirname(binaryPath);
 
       if (!fs.existsSync(binaryPath)) {
         reject(new Error(
-          `whisper.cpp binary not found at ${binaryPath}. ` +
-          'Please place the whisper-cpp binary in the bin/ directory.'
+          `whisper-cli binary not found at ${binaryPath}. ` +
+          'Please place whisper-cli.exe and its DLLs in the bin/ directory.'
         ));
         return;
       }
 
+      // Use 8 threads and CPU-only mode (--no-gpu)
+      const threadCount = Math.max(4, Math.min(os.cpus().length, 8));
       const args = [
-        '--model', modelPath,
-        '--file', wavPath,
-        '--output-txt',
+        '-m', modelPath,
+        '-f', wavPath,
+        '--no-gpu',
+        '-t', String(threadCount),
         '--no-timestamps',
-        '--language', 'en',
-        '--threads', String(Math.max(1, Math.min(os.cpus().length - 1, 4))),
+        '-l', 'en',
       ];
 
-      execFile(binaryPath, args, { timeout: 60000 }, (error, stdout, stderr) => {
+      // Set PATH to include bin dir so DLLs are found
+      const env = { ...process.env };
+      if (process.platform === 'win32') {
+        env.PATH = binDir + ';' + (env.PATH || '');
+      }
+
+      execFile(binaryPath, args, {
+        timeout: 120000, // 2 minute timeout for larger models
+        env,
+        cwd: binDir, // Run from bin dir so DLLs are found
+      }, (error, stdout, stderr) => {
         if (error) {
-          reject(new Error(`Whisper transcription failed: ${error.message}\n${stderr}`));
+          reject(new Error(`Whisper transcription failed: ${error.message}\n${stderr || ''}`));
           return;
         }
 
-        // whisper.cpp outputs text to stdout, sometimes with leading/trailing whitespace
+        // whisper.cpp outputs text to stdout
         let text = stdout.trim();
 
-        // Also check for .txt output file (whisper.cpp sometimes writes to file)
+        // Filter out whisper.cpp log lines (they start with timestamps like [00:00:00.000 --> ...])
+        // and system info lines
+        const lines = text.split('\n');
+        const transcriptionLines = lines.filter((line) => {
+          const trimmed = line.trim();
+          // Skip empty lines and whisper.cpp metadata
+          if (!trimmed) return false;
+          if (trimmed.startsWith('whisper_')) return false;
+          if (trimmed.startsWith('system_info:')) return false;
+          if (trimmed.startsWith('main:')) return false;
+          if (trimmed.startsWith('output_')) return false;
+          return true;
+        });
+
+        // Remove timestamp prefixes like [00:00:00.000 --> 00:00:05.000]
+        text = transcriptionLines
+          .map((line) => line.replace(/^\s*\[\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}\]\s*/, ''))
+          .join(' ')
+          .trim();
+
+        // Also check for .txt output file
         const txtPath = wavPath + '.txt';
         if (fs.existsSync(txtPath)) {
           const fileText = fs.readFileSync(txtPath, 'utf-8').trim();
-          // Use file text if stdout was empty
           if (!text && fileText) {
             text = fileText;
           }
-          // Note: txtPath cleanup is handled by the caller's finally block
         }
 
         resolve(text);
@@ -146,14 +175,14 @@ class WhisperEngine {
   }
 
   /**
-   * Get path to the whisper.cpp binary.
-   * In development: electron/bin/whisper-cpp.exe
-   * In production: resources/bin/whisper-cpp.exe
+   * Get path to the whisper-cli binary.
+   * In development: electron/bin/whisper-cli.exe
+   * In production: resources/bin/whisper-cli.exe
    * @returns {string}
    */
   _getWhisperBinaryPath() {
     const isDev = !require('electron').app.isPackaged;
-    const binaryName = process.platform === 'win32' ? 'whisper-cpp.exe' : 'whisper-cpp';
+    const binaryName = process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli';
 
     if (isDev) {
       return path.join(__dirname, '..', 'bin', binaryName);
