@@ -1,0 +1,63 @@
+{
+  "name": "krakwhisper-windows",
+  "version": "0.1.0",
+  "description": "KrakWhisper — Local voice dictation for Windows powered by whisper.cpp",
+  "main": "src/main/index.js",
+  "author": "KrakWhisper Team",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "cross-env NODE_ENV=development electron .",
+    "build": "electron-builder --win",
+    "build:dir": "electron-builder --win --dir",
+    "postinstall": "electron-builder install-app-deps",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0",
+    "electron-log": "^5.1.1",
+    "node-wav": "^0.0.2"
+  },
+  "devDependencies": {
+    "electron": "^29.1.0",
+    "electron-builder": "^24.13.3",
+    "cross-env": "^7.0.3"
+  },
+  "build": {
+    "appId": "com.krakwhisper.windows",
+    "productName": "KrakWhisper",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "KrakWhisper"
+    }
+  }
+}

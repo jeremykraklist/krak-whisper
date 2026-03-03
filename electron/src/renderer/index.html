@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';">
+  <title>KrakWhisper Settings</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>🎙️ KrakWhisper</h1>
+      <p class="subtitle">Local Voice Dictation</p>
+    </header>
+
+    <!-- Status Section -->
+    <section class="section status-section">
+      <div class="status-indicator" id="status-indicator">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Idle</span>
+      </div>
+      <button class="btn btn-primary" id="record-btn">
+        🎤 Start Recording
+      </button>
+    </section>
+
+    <!-- Last Transcription -->
+    <section class="section" id="transcription-section" style="display:none;">
+      <h2>Last Transcription</h2>
+      <div class="transcription-box" id="transcription-text"></div>
+      <p class="hint">✅ Copied to clipboard</p>
+    </section>
+
+    <!-- Models Section -->
+    <section class="section">
+      <h2>Models</h2>
+      <p class="hint">Download a model to get started. Larger = more accurate but slower.</p>
+      <div id="models-list" class="models-list">
+        <p class="loading">Loading models...</p>
+      </div>
+    </section>
+
+    <!-- Settings Section -->
+    <section class="section">
+      <h2>Settings</h2>
+
+      <div class="setting-row">
+        <label for="model-select">Active Model</label>
+        <select id="model-select" class="select"></select>
+      </div>
+
+      <div class="setting-row">
+        <label for="hotkey-input">Global Hotkey</label>
+        <input type="text" id="hotkey-input" class="input" readonly placeholder="Press keys...">
+        <p class="hint">Click the input and press your desired key combination</p>
+      </div>
+
+      <div class="setting-row">
+        <label>
+          <input type="checkbox" id="auto-clipboard" checked>
+          Auto-copy to clipboard
+        </label>
+      </div>
+
+      <div class="setting-row">
+        <label>
+          <input type="checkbox" id="show-notification" checked>
+          Show notification after transcription
+        </label>
+      </div>
+
+      <div class="setting-row">
+        <label>
+          <input type="checkbox" id="launch-startup">
+          Launch on startup
+        </label>
+      </div>
+    </section>
+
+    <!-- About Section -->
+    <section class="section about">
+      <p>KrakWhisper v0.1.0 — Powered by <a href="https://github.com/ggerganov/whisper.cpp" target="_blank">whisper.cpp</a></p>
+      <p>Local processing only. No data leaves your device.</p>
+    </section>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
