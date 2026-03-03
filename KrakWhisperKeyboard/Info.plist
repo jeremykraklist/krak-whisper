@@ -35,8 +35,11 @@
         <string>$(PRODUCT_MODULE_NAME).KeyboardViewController</string>
     </dict>
     <key>NSMicrophoneUsageDescription</key>
-    <string>KrakWhisper Keyboard needs microphone access to transcribe your voice into text. All processing happens on-device.</string>
-    <key>NSSpeechRecognitionUsageDescription</key>
-    <string>KrakWhisper Keyboard uses speech recognition to convert your voice to text. All processing happens on-device for privacy.</string>
+    <string>KrakWhisper needs microphone access to transcribe your voice into text using Whisper AI.</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
 </dict>
 </plist>

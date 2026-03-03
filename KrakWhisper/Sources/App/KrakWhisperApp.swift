@@ -24,6 +24,7 @@ struct KrakWhisperApp: App {
                 // Sync all downloaded models to shared App Group container
                 // so the keyboard extension can access them
                 downloadManager.syncModelsToSharedContainer()
+                
             }
         }
         .modelContainer(for: TranscriptionRecord.self)
