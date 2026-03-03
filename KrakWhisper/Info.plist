@@ -19,5 +19,16 @@
         <key>UIColorName</key>
         <string>LaunchBackground</string>
     </dict>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>krakwhisper</string>
+            </array>
+            <key>CFBundleURLName</key>
+            <string>com.krakwhisper.app</string>
+        </dict>
+    </array>
 </dict>
 </plist>
