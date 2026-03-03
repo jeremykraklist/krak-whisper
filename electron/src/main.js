@@ -286,36 +286,74 @@ function createSettingsWindow() {
 function simulatePaste() {
   if (process.platform !== 'win32') return;
 
-  // Use keybd_event which works even when our window isn't focused.
-  // Simulates Ctrl+V at the OS level — goes to whatever app has focus.
+  // Use PowerShell script with Win32 keybd_event for OS-level Ctrl+V.
+  // Falls back to WScript.Shell SendKeys if that fails.
+  // Must wait for clipboard to settle before simulating the keystroke.
   setTimeout(() => {
-    const psScript = `
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class KBSim {
-  [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
-  public const byte VK_CONTROL = 0x11;
-  public const byte VK_V = 0x56;
-  public const uint KEYEVENTF_KEYUP = 0x0002;
-  public static void Paste() {
-    keybd_event(VK_CONTROL, 0, 0, UIntPtr.Zero);
-    keybd_event(VK_V, 0, 0, UIntPtr.Zero);
-    keybd_event(VK_V, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
-    keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
-  }
-}
-"@
-[KBSim]::Paste()
-`;
-    execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
-      timeout: 5000,
-    }, (err) => {
+    const scriptPath = path.join(app.getPath('userData'), 'paste.ps1');
+
+    // Ensure the paste script exists in a writable location
+    const scriptContent = [
+      'Add-Type -TypeDefinition @"',
+      'using System;',
+      'using System.Runtime.InteropServices;',
+      'public class KBSim {',
+      '  [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);',
+      '  public const byte VK_CONTROL = 0x11;',
+      '  public const byte VK_V = 0x56;',
+      '  public const uint KEYEVENTF_KEYUP = 0x0002;',
+      '  public static void Paste() {',
+      '    keybd_event(VK_CONTROL, 0, 0, UIntPtr.Zero);',
+      '    keybd_event(VK_V, 0, 0, UIntPtr.Zero);',
+      '    System.Threading.Thread.Sleep(50);',
+      '    keybd_event(VK_V, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);',
+      '    keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);',
+      '  }',
+      '}',
+      '"@',
+      '[KBSim]::Paste()',
+    ].join('\r\n');
+
+    const fs = require('fs');
+    try {
+      fs.writeFileSync(scriptPath, scriptContent, 'utf-8');
+    } catch (e) {
+      console.error('Failed to write paste script:', e.message);
+    }
+
+    console.log('[paste] Attempting keybd_event paste via', scriptPath);
+    execFile('powershell', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy', 'Bypass',
+      '-File', scriptPath,
+    ], {
+      timeout: 8000,
+    }, (err, stdout, stderr) => {
       if (err) {
-        console.error('Auto-paste failed:', err.message);
+        console.error('[paste] keybd_event failed:', err.message, stderr);
+        // Fallback 1: WScript.Shell SendKeys — works from any context
+        console.log('[paste] Trying WScript.Shell fallback...');
+        const fallback = `(New-Object -ComObject WScript.Shell).SendKeys('^v')`;
+        execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', fallback], {
+          timeout: 5000,
+        }, (err2, stdout2, stderr2) => {
+          if (err2) {
+            console.error('[paste] WScript.Shell also failed:', err2.message, stderr2);
+            // Fallback 2: System.Windows.Forms.SendKeys
+            const fallback2 = `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')`;
+            execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', fallback2], {
+              timeout: 5000,
+            }, (err3) => {
+              if (err3) console.error('[paste] All paste methods failed:', err3.message);
+            });
+          }
+        });
+      } else {
+        console.log('[paste] keybd_event paste succeeded');
       }
     });
-  }, 200);
+  }, 500);
 }
 
 // ─── Recording ───────────────────────────────────────────────────────
@@ -386,15 +424,22 @@ async function stopRecording() {
 
     if (text && text.trim()) {
       const trimmed = text.trim();
+      console.log('[transcription] Result:', trimmed.substring(0, 100));
 
       // Auto-copy to clipboard
       if (store.get('autoCopy')) {
         clipboard.writeText(trimmed);
+        console.log('[transcription] Copied to clipboard');
+      } else {
+        console.log('[transcription] autoCopy is OFF, skipping clipboard');
       }
 
       // Auto-paste at cursor position
       if (store.get('autoPaste') && store.get('autoCopy')) {
+        console.log('[transcription] Auto-paste enabled, simulating Ctrl+V');
         simulatePaste();
+      } else {
+        console.log('[transcription] autoPaste:', store.get('autoPaste'), 'autoCopy:', store.get('autoCopy'));
       }
 
       broadcastResult(trimmed);
