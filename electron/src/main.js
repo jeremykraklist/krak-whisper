@@ -9,7 +9,7 @@ const { ModelManager } = require('./model-manager');
 /** @type {Store} */
 const store = new Store({
   defaults: {
-    model: 'small.en',
+    model: 'medium.en',
     hotkey: 'CommandOrControl+Shift+W',
     autoCopy: true,
     autoPaste: true,
