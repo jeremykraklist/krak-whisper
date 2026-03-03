@@ -337,6 +337,8 @@ ipcMain.handle('get-settings', () => {
 });
 
 ipcMain.handle('save-settings', (_event, settings) => {
+  const previousHotkey = store.get('hotkey');
+
   if (settings.model) store.set('model', settings.model);
   if (typeof settings.autoCopy === 'boolean') store.set('autoCopy', settings.autoCopy);
   if (typeof settings.showNotification === 'boolean') store.set('showNotification', settings.showNotification);
@@ -346,6 +348,9 @@ ipcMain.handle('save-settings', (_event, settings) => {
     store.set('hotkey', settings.hotkey);
     const registered = registerHotkey();
     if (!registered) {
+      // Rollback to previous hotkey on failure
+      store.set('hotkey', previousHotkey);
+      registerHotkey();
       return { success: false, error: `Hotkey "${settings.hotkey}" could not be registered. It may be in use by another application.` };
     }
   }
@@ -358,8 +363,13 @@ ipcMain.handle('get-state', () => {
   return { isRecording, model: store.get('model') };
 });
 
-ipcMain.handle('toggle-recording', () => {
-  toggleRecording();
+ipcMain.handle('toggle-recording', async () => {
+  try {
+    await toggleRecording();
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 });
 
 ipcMain.handle('get-available-models', () => {
