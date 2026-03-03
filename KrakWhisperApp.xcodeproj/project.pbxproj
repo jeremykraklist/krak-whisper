@@ -25,22 +25,6 @@
 		B020 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F020; };
 		B030 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = P001; };
 		BK01 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FK01; };
-		BK03 /* AudioLevelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FK03; };
-		BK04 /* SharedModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FK04; };
-		BK05 /* WhisperModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F003; };
-		BK06 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = PK01; };
-		BK07 /* KrakWhisperKeyboard.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = FK00; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		BK08 /* WhisperTranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F006; };
-/* End PBXBuildFile section */
-
-/* Begin PBXContainerItemProxy section */
-		CP01 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = PRJ1 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = TK01;
-			remoteInfo = KrakWhisperKeyboard;
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -99,7 +83,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BK06 /* SwiftWhisper in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -240,7 +223,6 @@
 			dependencies = ();
 			name = KrakWhisperKeyboard;
 			packageProductDependencies = (
-				PK01 /* SwiftWhisper */,
 			);
 			productName = KrakWhisperKeyboard;
 			productReference = FK00 /* KrakWhisperKeyboard.appex */;
@@ -327,10 +309,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				BK01 /* KeyboardViewController.swift in Sources */,
-				BK03 /* AudioLevelView.swift in Sources */,
-				BK04 /* SharedModelManager.swift in Sources */,
-				BK05 /* WhisperModel.swift in Sources */,
-				BK08 /* WhisperTranscriptionService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -352,7 +330,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = KrakWhisper/KrakWhisper.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = J4F36L43U9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = KrakWhisper/Info.plist;
@@ -377,7 +355,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = KrakWhisper/KrakWhisper.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = J4F36L43U9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = KrakWhisper/Info.plist;
@@ -437,7 +415,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = KrakWhisperKeyboard/KrakWhisperKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = J4F36L43U9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = KrakWhisperKeyboard/Info.plist;
@@ -460,7 +438,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = KrakWhisperKeyboard/KrakWhisperKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = J4F36L43U9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = KrakWhisperKeyboard/Info.plist;
@@ -523,11 +501,6 @@
 
 /* Begin XCSwiftPackageProductDependency section */
 		P001 /* SwiftWhisper */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = PKG1 /* SwiftWhisper */;
-			productName = SwiftWhisper;
-		};
-		PK01 /* SwiftWhisper */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = PKG1 /* SwiftWhisper */;
 			productName = SwiftWhisper;

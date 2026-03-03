@@ -1,19 +1,16 @@
 #if os(iOS)
 import UIKit
+import Speech
 import AVFoundation
-import SwiftWhisper
 
-// MARK: - KeyboardViewController (Pure UIKit — no SwiftUI)
+// MARK: - KrakWhisper QWERTY Keyboard with Speech Recognition
+// Uses Apple's SFSpeechRecognizer instead of Whisper — keyboard extensions have a
+// 42-45MB memory limit and Whisper's C++ library alone exceeds that.
+// SFSpeechRecognizer is a system framework with zero extra memory cost.
 
 final class KeyboardViewController: UIInputViewController {
     
-    // MARK: - State
-    
-    private enum RecordingState {
-        case idle
-        case recording
-        case transcribing
-    }
+    // MARK: - Types
     
     private enum KeyboardPage {
         case letters
@@ -21,29 +18,31 @@ final class KeyboardViewController: UIInputViewController {
         case symbols
     }
     
-    private var recordingState: RecordingState = .idle
+    private enum RecordingState {
+        case idle
+        case recording
+        case processing
+    }
+    
+    // MARK: - State
+    
     private var keyboardPage: KeyboardPage = .letters
-    private var isShifted = true // Start shifted for first letter
-    private var transcribedText = ""
-    private var recordingDuration: TimeInterval = 0
+    private var isShifted = true
+    private var recordingState: RecordingState = .idle
     
-    // Audio
-    private var audioEngine: AVAudioEngine?
-    private var recordedFrames: [Float] = []
-    private let sampleRate: Double = 16_000
-    private let maxRecordingDuration: TimeInterval = 60
-    private var durationTimer: Timer?
-    
-    // Transcription
-    private let transcriptionService = WhisperTranscriptionService()
-    private var isModelLoaded = false
+    // Speech recognition
+    private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+    private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
+    private var recognitionTask: SFSpeechRecognitionTask?
+    private var audioEngine = AVAudioEngine()
+    private var liveTranscript = ""
     
     // MARK: - UI Elements
     
     private let containerView = UIView()
     private var keyRows: [UIStackView] = []
     private let statusLabel = UILabel()
-    private let micButton = UIButton(type: .system)
+    private var micButton: UIButton?
     
     // Key definitions
     private let letterRows = [
@@ -58,7 +57,7 @@ final class KeyboardViewController: UIInputViewController {
     ]
     private let symbolRows = [
         ["[","]","{","}","#","%","^","*","+","="],
-        ["_","\\","|","~","<",">","€","£","¥","·"],
+        ["_","\\","|","~","<",">"],
         [".",",","?","!","\'"]
     ]
     
@@ -66,25 +65,23 @@ final class KeyboardViewController: UIInputViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        
         guard let inputView = self.inputView else { return }
         inputView.allowsSelfSizing = true
-        
         setupKeyboard()
-        loadModelIfAvailable()
     }
     
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        if !isModelLoaded { loadModelIfAvailable() }
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Check speech authorization status after view appears (sandbox is ready)
+        updateMicAvailability()
     }
     
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        if recordingState == .recording { cancelRecording() }
+        if recordingState == .recording { stopRecording() }
     }
     
-    // MARK: - Keyboard Setup
+    // MARK: - Setup
     
     private func setupKeyboard() {
         containerView.translatesAutoresizingMaskIntoConstraints = false
@@ -97,10 +94,10 @@ final class KeyboardViewController: UIInputViewController {
             containerView.heightAnchor.constraint(equalToConstant: 260),
         ])
         
-        // Status bar at top
         statusLabel.font = .systemFont(ofSize: 11)
         statusLabel.textColor = .secondaryLabel
         statusLabel.textAlignment = .center
+        statusLabel.text = "KrakWhisper"
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(statusLabel)
         
@@ -114,8 +111,24 @@ final class KeyboardViewController: UIInputViewController {
         buildKeyRows()
     }
     
+    private func updateMicAvailability() {
+        let authStatus = SFSpeechRecognizer.authorizationStatus()
+        switch authStatus {
+        case .notDetermined:
+            statusLabel.text = "KrakWhisper · Tap 🎤 to enable voice"
+        case .authorized:
+            statusLabel.text = "KrakWhisper"
+        case .denied, .restricted:
+            statusLabel.text = "KrakWhisper · Voice disabled in Settings"
+            statusLabel.textColor = .systemOrange
+        @unknown default:
+            break
+        }
+    }
+    
+    // MARK: - Build Key Rows
+    
     private func buildKeyRows() {
-        // Remove old rows
         keyRows.forEach { $0.removeFromSuperview() }
         keyRows.removeAll()
         
@@ -131,7 +144,6 @@ final class KeyboardViewController: UIInputViewController {
         let spacing: CGFloat = 6
         let sidePadding: CGFloat = 3
         
-        // Key rows
         for (index, keys) in rows.enumerated() {
             let rowStack = UIStackView()
             rowStack.axis = .horizontal
@@ -140,7 +152,6 @@ final class KeyboardViewController: UIInputViewController {
             rowStack.translatesAutoresizingMaskIntoConstraints = false
             containerView.addSubview(rowStack)
             
-            // Add shift key to left of row 3 (letters mode)
             if index == 2 && keyboardPage == .letters {
                 let shiftBtn = makeSpecialKey(
                     title: nil,
@@ -151,7 +162,6 @@ final class KeyboardViewController: UIInputViewController {
                 rowStack.addArrangedSubview(shiftBtn)
             }
             
-            // Add symbol toggle for row 3 in numbers/symbols mode
             if index == 2 && keyboardPage != .letters {
                 let toggleTitle = keyboardPage == .numbers ? "#+=" : "123"
                 let toggleBtn = makeSpecialKey(title: toggleTitle, image: nil, action: #selector(symbolToggleTapped))
@@ -160,11 +170,9 @@ final class KeyboardViewController: UIInputViewController {
             }
             
             for key in keys {
-                let btn = makeKeyButton(title: key)
-                rowStack.addArrangedSubview(btn)
+                rowStack.addArrangedSubview(makeKeyButton(title: key))
             }
             
-            // Add backspace to right of row 3
             if index == 2 {
                 let deleteBtn = makeSpecialKey(
                     title: nil,
@@ -193,24 +201,23 @@ final class KeyboardViewController: UIInputViewController {
         bottomRow.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(bottomRow)
         
-        // Globe
         let globeBtn = makeSpecialKey(title: nil, image: UIImage(systemName: "globe"), action: #selector(globeTapped))
         globeBtn.widthAnchor.constraint(equalToConstant: 40).isActive = true
         bottomRow.addArrangedSubview(globeBtn)
         
-        // 123/ABC toggle
         let pageTitle = keyboardPage == .letters ? "123" : "ABC"
         let pageBtn = makeSpecialKey(title: pageTitle, image: nil, action: #selector(pageToggleTapped))
         pageBtn.widthAnchor.constraint(equalToConstant: 44).isActive = true
         bottomRow.addArrangedSubview(pageBtn)
         
         // Mic button
-        micButton.removeTarget(nil, action: nil, for: .allEvents)
-        configureMicButton()
-        micButton.widthAnchor.constraint(equalToConstant: 40).isActive = true
-        bottomRow.addArrangedSubview(micButton)
+        let mic = UIButton(type: .system)
+        configureMicButtonAppearance(mic)
+        mic.widthAnchor.constraint(equalToConstant: 40).isActive = true
+        mic.addTarget(self, action: #selector(micTapped), for: .touchUpInside)
+        bottomRow.addArrangedSubview(mic)
+        micButton = mic
         
-        // Space bar
         let spaceBtn = UIButton(type: .system)
         spaceBtn.setTitle("space", for: .normal)
         spaceBtn.titleLabel?.font = .systemFont(ofSize: 15)
@@ -221,7 +228,6 @@ final class KeyboardViewController: UIInputViewController {
         spaceBtn.setContentHuggingPriority(.defaultLow, for: .horizontal)
         bottomRow.addArrangedSubview(spaceBtn)
         
-        // Return
         let returnBtn = makeSpecialKey(title: "return", image: nil, action: #selector(returnTapped))
         returnBtn.backgroundColor = UIColor.systemGray4
         returnBtn.widthAnchor.constraint(equalToConstant: 72).isActive = true
@@ -235,10 +241,9 @@ final class KeyboardViewController: UIInputViewController {
         ])
         
         keyRows.append(bottomRow)
-        updateStatusLabel()
     }
     
-    // MARK: - Key Factory
+    // MARK: - Button Factory
     
     private func makeKeyButton(title: String) -> UIButton {
         let btn = UIButton(type: .system)
@@ -267,309 +272,216 @@ final class KeyboardViewController: UIInputViewController {
         return btn
     }
     
-    private func configureMicButton() {
+    private func configureMicButtonAppearance(_ btn: UIButton) {
         switch recordingState {
         case .idle:
-            micButton.setImage(UIImage(systemName: "mic.fill"), for: .normal)
-            micButton.backgroundColor = UIColor.systemGray3
-            micButton.tintColor = .label
+            btn.setImage(UIImage(systemName: "mic.fill"), for: .normal)
+            btn.backgroundColor = .systemGray3
+            btn.tintColor = .label
         case .recording:
-            micButton.setImage(UIImage(systemName: "stop.fill"), for: .normal)
-            micButton.backgroundColor = UIColor.systemRed
-            micButton.tintColor = .white
-        case .transcribing:
-            micButton.setImage(UIImage(systemName: "waveform"), for: .normal)
-            micButton.backgroundColor = UIColor.systemBlue
-            micButton.tintColor = .white
+            btn.setImage(UIImage(systemName: "stop.fill"), for: .normal)
+            btn.backgroundColor = .systemRed
+            btn.tintColor = .white
+        case .processing:
+            btn.setImage(UIImage(systemName: "waveform"), for: .normal)
+            btn.backgroundColor = .systemBlue
+            btn.tintColor = .white
         }
-        micButton.layer.cornerRadius = 5
-        micButton.addTarget(self, action: #selector(micTapped), for: .touchUpInside)
-    }
-    
-    private func updateStatusLabel() {
-        switch recordingState {
-        case .idle:
-            if !transcribedText.isEmpty {
-                statusLabel.text = "✓ Transcribed — tap to insert"
-                statusLabel.textColor = .systemGreen
-            } else if !isModelLoaded {
-                statusLabel.text = "Open KrakWhisper to download model"
-                statusLabel.textColor = .systemOrange
-            } else {
-                let model = SharedModelManager.keyboardModelSize.rawValue
-                statusLabel.text = "KrakWhisper · \(model)"
-                statusLabel.textColor = .secondaryLabel
-            }
-        case .recording:
-            statusLabel.text = String(format: "Recording · %.1fs", recordingDuration)
-            statusLabel.textColor = .systemRed
-        case .transcribing:
-            statusLabel.text = "Transcribing..."
-            statusLabel.textColor = .systemBlue
-        }
+        btn.layer.cornerRadius = 5
     }
     
     // MARK: - Key Actions
     
     @objc private func keyTapped(_ sender: UIButton) {
         guard let title = sender.title(for: .normal) else { return }
-        
-        // If we have transcribed text waiting, insert it first
-        if !transcribedText.isEmpty {
-            textDocumentProxy.insertText(transcribedText)
-            transcribedText = ""
-        }
-        
         textDocumentProxy.insertText(title)
-        
-        // Auto-unshift after typing a letter
         if keyboardPage == .letters && isShifted {
             isShifted = false
             buildKeyRows()
         }
     }
     
-    @objc private func shiftTapped() {
-        isShifted.toggle()
-        buildKeyRows()
-    }
-    
-    @objc private func backspaceTapped() {
-        if !transcribedText.isEmpty {
-            transcribedText = ""
-            updateStatusLabel()
-        } else {
-            textDocumentProxy.deleteBackward()
-        }
-    }
-    
-    @objc private func spaceTapped() {
-        if !transcribedText.isEmpty {
-            textDocumentProxy.insertText(transcribedText)
-            transcribedText = ""
-            updateStatusLabel()
-        }
-        textDocumentProxy.insertText(" ")
-    }
-    
-    @objc private func returnTapped() {
-        if !transcribedText.isEmpty {
-            textDocumentProxy.insertText(transcribedText)
-            transcribedText = ""
-            updateStatusLabel()
-        }
-        textDocumentProxy.insertText("\n")
-    }
-    
-    @objc private func globeTapped() {
-        advanceToNextInputMode()
-    }
-    
+    @objc private func shiftTapped() { isShifted.toggle(); buildKeyRows() }
+    @objc private func backspaceTapped() { textDocumentProxy.deleteBackward() }
+    @objc private func spaceTapped() { textDocumentProxy.insertText(" ") }
+    @objc private func returnTapped() { textDocumentProxy.insertText("\n") }
+    @objc private func globeTapped() { advanceToNextInputMode() }
     @objc private func pageToggleTapped() {
         keyboardPage = (keyboardPage == .letters) ? .numbers : .letters
         buildKeyRows()
     }
-    
     @objc private func symbolToggleTapped() {
         keyboardPage = (keyboardPage == .numbers) ? .symbols : .numbers
         buildKeyRows()
     }
     
+    // MARK: - Mic / Speech Recognition
+    
     @objc private func micTapped() {
         switch recordingState {
         case .idle:
-            if !transcribedText.isEmpty {
-                // Insert existing transcription and start new recording
-                textDocumentProxy.insertText(transcribedText)
-                transcribedText = ""
-            }
-            startRecording()
+            requestPermissionsAndStart()
         case .recording:
-            stopRecordingAndTranscribe()
-        case .transcribing:
+            stopRecording()
+        case .processing:
             break
         }
     }
     
-    // MARK: - Model Loading
-    
-    private func loadModelIfAvailable() {
-        guard SharedModelManager.hasAnyModel else {
-            updateStatusLabel()
-            return
-        }
-        
-        let modelSize = SharedModelManager.keyboardModelSize
-        guard let modelURL = SharedModelManager.modelURL(for: modelSize) else {
-            updateStatusLabel()
-            return
-        }
-        
-        Task {
-            do {
-                try await transcriptionService.loadModel(from: modelURL, size: modelSize)
-                isModelLoaded = true
-                updateStatusLabel()
-            } catch {
-                statusLabel.text = "Model load failed"
-                statusLabel.textColor = .systemRed
+    private func requestPermissionsAndStart() {
+        // Check speech recognition authorization
+        SFSpeechRecognizer.requestAuthorization { [weak self] authStatus in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch authStatus {
+                case .authorized:
+                    self.startRecording()
+                case .denied:
+                    self.statusLabel.text = "Speech recognition denied — enable in Settings"
+                    self.statusLabel.textColor = .systemRed
+                case .restricted:
+                    self.statusLabel.text = "Speech recognition restricted on this device"
+                    self.statusLabel.textColor = .systemRed
+                case .notDetermined:
+                    self.statusLabel.text = "Tap mic again to authorize"
+                    self.statusLabel.textColor = .systemOrange
+                @unknown default:
+                    break
+                }
             }
         }
     }
-    
-    // MARK: - Recording
     
     private func startRecording() {
-        guard isModelLoaded else {
-            statusLabel.text = "No model loaded"
+        guard let speechRecognizer, speechRecognizer.isAvailable else {
+            statusLabel.text = "Speech recognition unavailable"
             statusLabel.textColor = .systemRed
             return
         }
         
-        Task {
-            let granted = await AVAudioApplication.requestRecordPermission()
-            await MainActor.run {
-                if granted { beginAudioCapture() }
-                else {
-                    statusLabel.text = "Mic access denied"
-                    statusLabel.textColor = .systemRed
-                }
-            }
-        }
-    }
-    
-    private func beginAudioCapture() {
-        recordedFrames = []
-        recordingDuration = 0
+        // Cancel any existing task
+        recognitionTask?.cancel()
+        recognitionTask = nil
         
-        let session = AVAudioSession.sharedInstance()
+        // Configure audio session
+        let audioSession = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.record, mode: .measurement, options: [])
-            try session.setPreferredSampleRate(sampleRate)
-            try session.setActive(true, options: [])
+            try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
+            try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
-            statusLabel.text = "Audio error"
+            statusLabel.text = "Audio session error"
             statusLabel.textColor = .systemRed
             return
         }
         
-        let engine = AVAudioEngine()
-        let inputNode = engine.inputNode
-        let inputFormat = inputNode.outputFormat(forBus: 0)
+        // Create recognition request
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        request.requiresOnDeviceRecognition = speechRecognizer.supportsOnDeviceRecognition
+        recognitionRequest = request
+        liveTranscript = ""
         
-        guard let desiredFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: sampleRate,
-            channels: 1,
-            interleaved: false
-        ) else { return }
-        
-        let converter = AVAudioConverter(from: inputFormat, to: desiredFormat)
-        
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
-            guard let self, let converter else { return }
+        // Start recognition task
+        recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
+            guard let self else { return }
             
-            let frameCount = AVAudioFrameCount(
-                Double(buffer.frameLength) * self.sampleRate / inputFormat.sampleRate
-            )
-            guard let convertedBuffer = AVAudioPCMBuffer(
-                pcmFormat: desiredFormat,
-                frameCapacity: frameCount
-            ) else { return }
-            
-            var error: NSError?
-            let status = converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
-                outStatus.pointee = .haveData
-                return buffer
-            }
-            
-            if status == .haveData, let channelData = convertedBuffer.floatChannelData {
-                let frames = Array(UnsafeBufferPointer(
-                    start: channelData[0],
-                    count: Int(convertedBuffer.frameLength)
-                ))
+            if let result {
+                let text = result.bestTranscription.formattedString
+                self.liveTranscript = text
+                
                 DispatchQueue.main.async {
-                    self.recordedFrames.append(contentsOf: frames)
+                    let preview = text.count > 40 ? "..." + text.suffix(37) : text
+                    self.statusLabel.text = "🎤 \(preview)"
+                    self.statusLabel.textColor = .systemBlue
                 }
-            }
-        }
-        
-        do {
-            try engine.start()
-            audioEngine = engine
-            recordingState = .recording
-            configureMicButton()
-            
-            durationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-                DispatchQueue.main.async {
-                    guard let self, self.recordingState == .recording else { return }
-                    self.recordingDuration += 0.1
-                    self.updateStatusLabel()
-                    if self.recordingDuration >= self.maxRecordingDuration {
-                        self.stopRecordingAndTranscribe()
+                
+                if result.isFinal {
+                    DispatchQueue.main.async {
+                        self.finishRecognition(text: text)
                     }
                 }
             }
+            
+            if let error {
+                DispatchQueue.main.async {
+                    // Only show error if we're still recording (not user-cancelled)
+                    if self.recordingState == .recording {
+                        if !self.liveTranscript.isEmpty {
+                            // We got partial results — insert what we have
+                            self.finishRecognition(text: self.liveTranscript)
+                        } else {
+                            self.statusLabel.text = "Recognition error"
+                            self.statusLabel.textColor = .systemRed
+                            self.recordingState = .idle
+                            if let mic = self.micButton { self.configureMicButtonAppearance(mic) }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Install audio tap
+        let inputNode = audioEngine.inputNode
+        let recordingFormat = inputNode.outputFormat(forBus: 0)
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
+            self?.recognitionRequest?.append(buffer)
+        }
+        
+        do {
+            audioEngine.prepare()
+            try audioEngine.start()
+            
+            recordingState = .recording
+            if let mic = micButton { configureMicButtonAppearance(mic) }
+            statusLabel.text = "🎤 Listening..."
+            statusLabel.textColor = .systemRed
         } catch {
             statusLabel.text = "Mic start failed"
             statusLabel.textColor = .systemRed
         }
     }
     
-    private func stopRecordingAndTranscribe() {
-        audioEngine?.inputNode.removeTap(onBus: 0)
-        audioEngine?.stop()
-        audioEngine = nil
-        durationTimer?.invalidate()
-        durationTimer = nil
+    private func stopRecording() {
+        audioEngine.stop()
+        audioEngine.inputNode.removeTap(onBus: 0)
+        recognitionRequest?.endAudio()
+        recognitionRequest = nil
+        
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         
-        let frames = recordedFrames
-        guard !frames.isEmpty else {
-            statusLabel.text = "No audio"
-            statusLabel.textColor = .systemRed
+        // If we have partial transcript, insert it
+        if !liveTranscript.isEmpty {
+            finishRecognition(text: liveTranscript)
+        } else {
             recordingState = .idle
-            configureMicButton()
-            return
-        }
-        
-        recordingState = .transcribing
-        configureMicButton()
-        updateStatusLabel()
-        
-        Task {
-            do {
-                let result = try await transcriptionService.transcribe(audioFrames: frames)
-                transcribedText = result.text
-                recordingState = .idle
-                configureMicButton()
-                
-                // Auto-insert the transcription
-                if !result.text.isEmpty {
-                    textDocumentProxy.insertText(result.text)
-                    transcribedText = ""
-                }
-                updateStatusLabel()
-            } catch {
-                statusLabel.text = "Transcription failed"
-                statusLabel.textColor = .systemRed
-                recordingState = .idle
-                configureMicButton()
-            }
+            if let mic = micButton { configureMicButtonAppearance(mic) }
+            statusLabel.text = "KrakWhisper"
+            statusLabel.textColor = .secondaryLabel
         }
     }
     
-    private func cancelRecording() {
-        audioEngine?.inputNode.removeTap(onBus: 0)
-        audioEngine?.stop()
-        audioEngine = nil
-        durationTimer?.invalidate()
-        durationTimer = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        recordedFrames = []
+    private func finishRecognition(text: String) {
+        recognitionTask?.cancel()
+        recognitionTask = nil
+        
+        // Insert the transcribed text
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            textDocumentProxy.insertText(trimmed + " ")
+            statusLabel.text = "✓ Inserted"
+            statusLabel.textColor = .systemGreen
+        }
+        
         recordingState = .idle
-        configureMicButton()
-        updateStatusLabel()
+        if let mic = micButton { configureMicButtonAppearance(mic) }
+        liveTranscript = ""
+        
+        // Reset status after a moment
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self, self.recordingState == .idle else { return }
+            self.statusLabel.text = "KrakWhisper"
+            self.statusLabel.textColor = .secondaryLabel
+        }
     }
 }
 #endif
