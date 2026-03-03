@@ -5,6 +5,8 @@ struct SettingsView: View {
     @ObservedObject var downloadManager: ModelDownloadManager
     @AppStorage("krakwhisper.autoCopyToClipboard") private var autoCopyToClipboard = true
     @AppStorage("krakwhisper.language") private var language = "en"
+    @AppStorage("krakwhisper.useAPICleanup") private var useAPICleanup = false
+    @AppStorage("krakwhisper.autoCleanup") private var autoCleanup = false
 
     var body: some View {
         NavigationStack {
@@ -46,6 +48,18 @@ struct SettingsView: View {
                     }
 
                     Toggle("Auto-copy to clipboard", isOn: $autoCopyToClipboard)
+                }
+
+                // MARK: - AI Cleanup
+                Section {
+                    Toggle("Auto-clean after transcription", isOn: $autoCleanup)
+
+                    Toggle("Use API for cleanup", isOn: $useAPICleanup)
+                        .disabled(true) // Stubbed — API integration not yet available
+                } header: {
+                    Text("AI Text Cleanup")
+                } footer: {
+                    Text("On-device cleanup removes filler words and fixes grammar. API cleanup (coming soon) provides deeper grammar and style corrections.")
                 }
 
                 // MARK: - Keyboard Extension
