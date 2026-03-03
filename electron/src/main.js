@@ -22,6 +22,8 @@ const store = new Store({
 let mainWindow = null;
 /** @type {BrowserWindow | null} */
 let settingsWindow = null;
+/** @type {BrowserWindow | null} */
+let widgetWindow = null;
 /** @type {Tray | null} */
 let tray = null;
 /** @type {AudioRecorder} */
@@ -55,6 +57,7 @@ app.whenReady().then(async () => {
   whisperEngine = new WhisperEngine(modelManager);
 
   createTray();
+  createWidget();
   registerHotkey();
 
   // Check if first launch — trigger model download
@@ -73,6 +76,71 @@ app.on('window-all-closed', (e) => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
 });
+
+// ─── Floating Widget ─────────────────────────────────────────────────
+function createWidget() {
+  const { screen } = require('electron');
+  const display = screen.getPrimaryDisplay();
+  const savedX = store.get('widgetX', display.workArea.width - 80);
+  const savedY = store.get('widgetY', display.workArea.height / 2);
+
+  widgetWindow = new BrowserWindow({
+    width: 56,
+    height: 76, // Extra space for duration label
+    x: Math.round(savedX),
+    y: Math.round(savedY),
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+  });
+
+  widgetWindow.loadFile(path.join(__dirname, 'renderer', 'widget.html'));
+  widgetWindow.setVisibleOnAllWorkspaces(true);
+
+  // Save position when moved
+  widgetWindow.on('moved', () => {
+    if (widgetWindow) {
+      const [x, y] = widgetWindow.getPosition();
+      store.set('widgetX', x);
+      store.set('widgetY', y);
+    }
+  });
+
+  widgetWindow.on('closed', () => {
+    widgetWindow = null;
+  });
+}
+
+// Widget IPC
+ipcMain.on('widget-toggle', () => {
+  toggleRecording();
+});
+
+ipcMain.on('widget-context-menu', () => {
+  const contextMenu = Menu.buildFromTemplate([
+    { label: `Model: ${store.get('model')}`, enabled: false },
+    { type: 'separator' },
+    { label: 'Settings', click: () => { createSettingsWindow(); } },
+    { label: 'Hide Widget', click: () => { if (widgetWindow) widgetWindow.hide(); } },
+    { type: 'separator' },
+    { label: 'Quit', click: () => app.quit() },
+  ]);
+  if (widgetWindow) contextMenu.popup({ window: widgetWindow });
+});
+
+// Update widget state when recording state changes
+function updateWidget(state) {
+  if (widgetWindow && !widgetWindow.isDestroyed()) {
+    widgetWindow.webContents.send('widget-state', state);
+  }
+}
 
 // ─── Tray ────────────────────────────────────────────────────────────
 function createTray() {
@@ -259,6 +327,7 @@ async function startRecording() {
   isRecording = true;
   updateTrayMenu();
   updateTrayIcon(true);
+  updateWidget('recording');
   broadcastState();
 
   try {
@@ -279,11 +348,13 @@ async function stopRecording() {
   isRecording = false;
   updateTrayMenu();
   updateTrayIcon(false);
+  updateWidget('transcribing');
   broadcastState();
 
   try {
     const audioBuffer = await recorder.stop();
     if (!audioBuffer || audioBuffer.length === 0) {
+      updateWidget('idle');
       broadcastResult('(No audio captured)');
       return;
     }
@@ -307,6 +378,7 @@ async function stopRecording() {
       }
 
       broadcastResult(trimmed);
+      updateWidget('done');
 
       if (store.get('showNotification')) {
         new Notification({
@@ -316,9 +388,11 @@ async function stopRecording() {
       }
     } else {
       broadcastResult('(No speech detected)');
+      updateWidget('idle');
     }
   } catch (err) {
     broadcastResult(`Error: ${err.message}`);
+    updateWidget('idle');
   }
 }
 
