@@ -268,8 +268,6 @@ struct MenuBarPopoverView: View {
     // MARK: - Actions
 
     private func openSettings() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        // Also try the newer API name
         if #available(macOS 14, *) {
             NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
         } else {

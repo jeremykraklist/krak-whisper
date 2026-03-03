@@ -91,6 +91,7 @@ final class DictationViewModel: ObservableObject {
     private var recordingStartTime: Date?
     private let sampleRate: Double = 16_000
     private let maxAudioLevels = 60
+    private var modelLoadTask: Task<Void, Never>?
 
     // MARK: - Init
 
@@ -108,19 +109,32 @@ final class DictationViewModel: ObservableObject {
     // MARK: - Model Management
 
     /// Load the currently selected Whisper model.
+    /// Cancels any in-flight model load to prevent stale results.
     func loadSelectedModel() async {
-        guard WhisperModelLocator.isModelDownloaded(selectedModel) else {
+        // Cancel any prior load to avoid race conditions
+        modelLoadTask?.cancel()
+
+        let targetModel = selectedModel
+
+        guard WhisperModelLocator.isModelDownloaded(targetModel) else {
             isModelLoaded = false
             return
         }
 
-        do {
-            try await transcriptionService.loadModel(selectedModel)
-            isModelLoaded = true
-        } catch {
-            isModelLoaded = false
-            updateState(.error("Failed to load model: \(error.localizedDescription)"))
+        let task = Task {
+            do {
+                try await transcriptionService.loadModel(targetModel)
+                // Only apply result if the selection hasn't changed
+                guard !Task.isCancelled, selectedModel == targetModel else { return }
+                isModelLoaded = true
+            } catch {
+                guard !Task.isCancelled, selectedModel == targetModel else { return }
+                isModelLoaded = false
+                updateState(.error("Failed to load model: \(error.localizedDescription)"))
+            }
         }
+        modelLoadTask = task
+        await task.value
     }
 
     // MARK: - Dictation Control
@@ -251,47 +265,52 @@ final class DictationViewModel: ObservableObject {
         recordingStartTime = nil
         currentAudioLevel = 0
 
-        let frames = recordedFrames
-        guard !frames.isEmpty else {
-            updateState(.error("No audio was recorded"))
-            return
-        }
-
         updateState(.transcribing)
 
-        Task {
-            do {
-                let result = try await transcriptionService.transcribe(audioFrames: frames)
-                let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
-
-                guard !text.isEmpty else {
-                    updateState(.error("No speech detected"))
-                    return
-                }
-
-                lastTranscription = text
-                transcriptionDuration = result.duration
-
-                // Always copy to clipboard
-                PasteService.copyToClipboard(text)
-
-                // Auto-paste if enabled
-                if autoPaste {
-                    // Small delay to let the clipboard update propagate
-                    try? await Task.sleep(for: .milliseconds(100))
-                    PasteService.pasteFromClipboard()
-                }
-
-                updateState(.completed(text))
-
-                // Auto-reset to idle after a delay
-                try? await Task.sleep(for: .seconds(5))
-                if case .completed = state {
-                    updateState(.idle)
-                }
-            } catch {
-                updateState(.error("Transcription failed: \(error.localizedDescription)"))
+        // Yield to the MainActor run loop so any queued frame-append tasks
+        // from the audio tap complete before we snapshot recordedFrames.
+        Task { @MainActor in
+            let frames = self.recordedFrames
+            guard !frames.isEmpty else {
+                self.updateState(.error("No audio was recorded"))
+                return
             }
+            await self.performTranscription(frames: frames)
+        }
+    }
+
+    private func performTranscription(frames: [Float]) async {
+        do {
+            let result = try await transcriptionService.transcribe(audioFrames: frames)
+            let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            guard !text.isEmpty else {
+                updateState(.error("No speech detected"))
+                return
+            }
+
+            lastTranscription = text
+            transcriptionDuration = result.duration
+
+            // Always copy to clipboard
+            PasteService.copyToClipboard(text)
+
+            // Auto-paste if enabled
+            if autoPaste {
+                // Small delay to let the clipboard update propagate
+                try? await Task.sleep(for: .milliseconds(100))
+                PasteService.pasteFromClipboard()
+            }
+
+            updateState(.completed(text))
+
+            // Auto-reset to idle after a delay
+            try? await Task.sleep(for: .seconds(5))
+            if case .completed = state {
+                updateState(.idle)
+            }
+        } catch {
+            updateState(.error("Transcription failed: \(error.localizedDescription)"))
         }
     }
 

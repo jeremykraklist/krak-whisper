@@ -10,9 +10,11 @@ enum PasteService {
     // MARK: - Clipboard
 
     /// Copy text to the system clipboard.
-    static func copyToClipboard(_ text: String) {
+    /// - Returns: `true` if the text was successfully written to the clipboard.
+    @discardableResult
+    static func copyToClipboard(_ text: String) -> Bool {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        return NSPasteboard.general.setString(text, forType: .string)
     }
 
     // MARK: - Paste to Frontmost App
@@ -43,8 +45,9 @@ enum PasteService {
     }
 
     /// Copy text to clipboard and paste it into the frontmost app.
+    /// No-op if clipboard write fails.
     static func copyAndPaste(_ text: String) {
-        copyToClipboard(text)
+        guard copyToClipboard(text) else { return }
 
         // Small delay to ensure clipboard is updated before paste
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {

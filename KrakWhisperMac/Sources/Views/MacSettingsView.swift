@@ -62,14 +62,15 @@ struct GeneralSettingsTab: View {
                 HStack {
                     Text("Dictation shortcut:")
                     Spacer()
-                    Text("⌘⇧Space")
+                    // TODO: Replace with a shortcut recorder control for full customization
+                    Text(HotkeyManager().hotkeyDisplayString)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
                         .background(.quaternary)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                         .font(.system(.body, design: .monospaced))
                 }
-                Text("Press the shortcut to start/stop dictation from any app")
+                Text("Press the shortcut to start/stop dictation from any app. Customizable shortcut recorder coming in a future update.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

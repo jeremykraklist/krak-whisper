@@ -14,8 +14,9 @@ final class HotkeyManager {
     /// The key code for the hotkey (default: Space = 49).
     var keyCode: UInt16 {
         get {
-            let saved = UserDefaults.standard.integer(forKey: "hotkeyKeyCode")
-            return saved > 0 ? UInt16(saved) : 49 // 49 = Space
+            let defaults = UserDefaults.standard
+            guard defaults.object(forKey: "hotkeyKeyCode") != nil else { return 49 } // 49 = Space
+            return UInt16(defaults.integer(forKey: "hotkeyKeyCode"))
         }
         set {
             UserDefaults.standard.set(Int(newValue), forKey: "hotkeyKeyCode")
@@ -25,11 +26,11 @@ final class HotkeyManager {
     /// The modifier flags for the hotkey (default: Cmd+Shift).
     var modifierFlags: NSEvent.ModifierFlags {
         get {
-            let saved = UserDefaults.standard.integer(forKey: "hotkeyModifiers")
-            if saved > 0 {
-                return NSEvent.ModifierFlags(rawValue: UInt(saved))
+            let defaults = UserDefaults.standard
+            guard defaults.object(forKey: "hotkeyModifiers") != nil else {
+                return [.command, .shift]
             }
-            return [.command, .shift]
+            return NSEvent.ModifierFlags(rawValue: UInt(defaults.integer(forKey: "hotkeyModifiers")))
         }
         set {
             UserDefaults.standard.set(Int(newValue.rawValue), forKey: "hotkeyModifiers")
@@ -126,10 +127,20 @@ final class HotkeyManager {
 
     /// Convert a key code to its character representation.
     private func keyCodeToCharacter(_ keyCode: UInt16) -> String? {
-        let source = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
-        guard let layoutData = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
-            return nil
+        // TISCopyCurrentKeyboardInputSource may return NULL for some input configurations
+        guard let sourceRef = TISCopyCurrentKeyboardInputSource() else { return nil }
+        let source = sourceRef.takeRetainedValue()
+
+        // kTISPropertyUnicodeKeyLayoutData can be NULL for certain IMEs;
+        // fall back to TISCopyCurrentKeyboardLayoutInputSource in that case
+        var layoutData = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
+        if layoutData == nil {
+            guard let fallbackRef = TISCopyCurrentKeyboardLayoutInputSource() else { return nil }
+            let fallback = fallbackRef.takeRetainedValue()
+            layoutData = TISGetInputSourceProperty(fallback, kTISPropertyUnicodeKeyLayoutData)
         }
+        guard let layoutData else { return nil }
+
         let dataRef = unsafeBitCast(layoutData, to: CFData.self)
         let keyLayoutPtr = unsafeBitCast(
             CFDataGetBytePtr(dataRef),
