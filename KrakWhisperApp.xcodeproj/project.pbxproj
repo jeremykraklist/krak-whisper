@@ -22,6 +22,7 @@
 		B014 /* RecordingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F014; };
 		B015 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F015; };
 		B016 /* WaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F016; };
+		B017 /* KeyboardTranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F017; };
 		B020 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F020; };
 		B030 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = P001; };
 		BK01 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FK01; };
@@ -59,6 +60,7 @@
 		F014 /* RecordingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingView.swift; sourceTree = "<group>"; };
 		F015 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F016 /* WaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformView.swift; sourceTree = "<group>"; };
+		F017 /* KeyboardTranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardTranscriptionService.swift; sourceTree = "<group>"; };
 		F020 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F021 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F022 /* KrakWhisper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KrakWhisper.entitlements; sourceTree = "<group>"; };
@@ -138,6 +140,7 @@
 				F004 /* AudioCaptureService.swift */,
 				F005 /* ModelDownloadManager.swift */,
 				F006 /* WhisperTranscriptionService.swift */,
+				F017 /* KeyboardTranscriptionService.swift */,
 			);
 			path = "Sources/Services";
 			sourceTree = "<group>";
@@ -302,6 +305,7 @@
 				B014 /* RecordingView.swift in Sources */,
 				B015 /* SettingsView.swift in Sources */,
 				B016 /* WaveformView.swift in Sources */,
+				B017 /* KeyboardTranscriptionService.swift in Sources */,
 );
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -331,7 +335,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = KrakWhisper/KrakWhisper.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 21;
 				DEVELOPMENT_TEAM = J4F36L43U9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = KrakWhisper/Info.plist;
@@ -356,7 +360,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = KrakWhisper/KrakWhisper.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 21;
 				DEVELOPMENT_TEAM = J4F36L43U9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = KrakWhisper/Info.plist;
@@ -416,7 +420,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = KrakWhisperKeyboard/KrakWhisperKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 21;
 				DEVELOPMENT_TEAM = J4F36L43U9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = KrakWhisperKeyboard/Info.plist;
@@ -439,7 +443,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = KrakWhisperKeyboard/KrakWhisperKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 21;
 				DEVELOPMENT_TEAM = J4F36L43U9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = KrakWhisperKeyboard/Info.plist;

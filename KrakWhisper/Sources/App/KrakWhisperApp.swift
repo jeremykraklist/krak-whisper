@@ -25,6 +25,8 @@ struct KrakWhisperApp: App {
                 // so the keyboard extension can access them
                 downloadManager.syncModelsToSharedContainer()
                 
+                // Listen for keyboard extension transcription requests via App Group IPC
+                KeyboardTranscriptionService.shared.startListening()
             }
         }
         .modelContainer(for: TranscriptionRecord.self)
