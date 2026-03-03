@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>KrakWhisper Settings</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .settings-form {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-group label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .form-group select,
+    .form-group input[type="text"] {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      -webkit-app-region: no-drag;
+    }
+
+    .form-group select:focus,
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+      -webkit-app-region: no-drag;
+    }
+
+    .checkbox-group label {
+      font-size: 0.9rem;
+      color: var(--text-primary);
+      text-transform: none;
+      letter-spacing: 0;
+      font-weight: normal;
+    }
+
+    .save-section {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    #save-status {
+      font-size: 0.85rem;
+      color: var(--accent);
+      align-self: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1 class="logo">⚙️ Settings</h1>
+    </header>
+
+    <div class="panel">
+      <form class="settings-form" id="settings-form">
+        <div class="form-group">
+          <label for="model-select">Whisper Model</label>
+          <select id="model-select">
+            <option value="tiny.en">tiny.en (~75 MB) — Fastest</option>
+            <option value="base.en">base.en (~142 MB) — Balanced</option>
+            <option value="small.en">small.en (~466 MB) — Most Accurate</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="hotkey-input">Global Hotkey</label>
+          <input type="text" id="hotkey-input" placeholder="e.g. CommandOrControl+Shift+Space" readonly>
+          <p class="description" style="margin: 0;">Click and press your desired key combination</p>
+        </div>
+
+        <div class="form-group">
+          <div class="checkbox-group">
+            <input type="checkbox" id="auto-copy" checked>
+            <label for="auto-copy">Auto-copy transcription to clipboard</label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="checkbox-group">
+            <input type="checkbox" id="show-notification" checked>
+            <label for="show-notification">Show notification after transcription</label>
+          </div>
+        </div>
+
+        <div class="save-section">
+          <span id="save-status"></span>
+          <button type="submit" class="btn btn-primary">💾 Save Settings</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="settings-renderer.js"></script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>KrakWhisper</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <h1 class="logo">🎙 KrakWhisper</h1>
+      <p class="subtitle">Local Voice Dictation</p>
+    </header>
+
+    <!-- Setup Panel (shown on first launch / model download) -->
+    <div id="setup-panel" class="panel hidden">
+      <h2>Model Setup</h2>
+      <p class="description">Download a Whisper model to get started. Smaller models are faster but less accurate.</p>
+      <div id="model-list" class="model-list">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- Main Panel -->
+    <div id="main-panel" class="panel">
+      <!-- Record Button -->
+      <div class="record-section">
+        <button id="record-btn" class="record-btn" title="Toggle Recording (Ctrl+Shift+Space)">
+          <span class="record-icon" id="record-icon">🎙</span>
+        </button>
+        <p id="record-status" class="record-status">Press to record</p>
+      </div>
+
+      <!-- Transcription Output -->
+      <div class="transcription-section">
+        <div id="transcription-output" class="transcription-output" contenteditable="false">
+          <p class="placeholder">Transcribed text will appear here...</p>
+        </div>
+        <div class="transcription-actions">
+          <button id="copy-btn" class="btn btn-primary" disabled>📋 Copy to Clipboard</button>
+          <button id="clear-btn" class="btn btn-secondary" disabled>🗑 Clear</button>
+        </div>
+      </div>
+
+      <!-- Status Bar -->
+      <div class="status-bar">
+        <span id="model-indicator" class="indicator">Model: —</span>
+        <span id="hotkey-indicator" class="indicator">Hotkey: Ctrl+Shift+Space</span>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <button id="settings-btn" class="btn-link">⚙️ Settings</button>
+      <span class="version">v1.0.0</span>
+    </footer>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
