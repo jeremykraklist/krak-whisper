@@ -35,6 +35,9 @@ final class TranscriptionRecord {
     /// Whether this record has been favorited by the user.
     var isFavorited: Bool
 
+    /// AI-cleaned version of the transcription text (nil if not yet cleaned).
+    var cleanedText: String?
+
     /// Computed property: display title falls back to first line of text.
     var displayTitle: String {
         if !title.isEmpty {
@@ -191,6 +194,18 @@ final class TranscriptionStore: ObservableObject {
     /// Update the tags of a record.
     func updateTags(_ record: TranscriptionRecord, tags: String) throws {
         record.tags = tags
+        try persistOrReport()
+    }
+
+    /// Save AI-cleaned text for a record (non-destructive — original text preserved).
+    func saveCleanedText(_ record: TranscriptionRecord, cleanedText: String) throws {
+        record.cleanedText = cleanedText
+        try persistOrReport()
+    }
+
+    /// Clear cleaned text from a record.
+    func clearCleanedText(_ record: TranscriptionRecord) throws {
+        record.cleanedText = nil
         try persistOrReport()
     }
 

@@ -257,6 +257,7 @@ struct HistoryRowView: View {
 /// Detail view for a single transcription record.
 ///
 /// Shows full text, metadata, and provides editing/sharing capabilities.
+/// Includes AI cleanup with before/after toggle.
 struct TranscriptionDetailView: View {
 
     @Environment(\.modelContext) private var modelContext
@@ -271,6 +272,15 @@ struct TranscriptionDetailView: View {
     @State private var errorMessage = ""
     @State private var showCopiedInline = false
 
+    /// Whether to show the cleaned version (true) or original (false).
+    @State private var showingCleanedText = false
+
+    /// AI cleanup service instance.
+    @State private var cleanupService = AICleanupService()
+
+    /// Whether cleanup is currently running.
+    @State private var isCleaningUp = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -284,6 +294,9 @@ struct TranscriptionDetailView: View {
                 tagsSection
 
                 Divider()
+
+                // AI Cleanup section
+                cleanupSection
 
                 // Full transcription text
                 textSection
@@ -315,8 +328,23 @@ struct TranscriptionDetailView: View {
                 Menu {
                     Button {
                         ClipboardService.copy(record.text)
+                        UIPasteboard.general.string = displayedText
                     } label: {
                         Label("Copy Text", systemImage: "doc.on.doc")
+                    }
+
+                    if record.cleanedText != nil {
+                        Button {
+                            UIPasteboard.general.string = record.cleanedText ?? ""
+                        } label: {
+                            Label("Copy Cleaned Text", systemImage: "doc.on.doc.fill")
+                        }
+
+                        Button {
+                            UIPasteboard.general.string = record.text
+                        } label: {
+                            Label("Copy Original Text", systemImage: "doc.on.doc")
+                        }
                     }
 
                     Button {
@@ -331,6 +359,23 @@ struct TranscriptionDetailView: View {
                         editedTags = record.tags
                     } label: {
                         Label("Edit Tags", systemImage: "tag")
+                    }
+
+                    if record.cleanedText != nil {
+                        Divider()
+
+                        Button(role: .destructive) {
+                            record.cleanedText = nil
+                            showingCleanedText = false
+                            do {
+                                try modelContext.save()
+                            } catch {
+                                errorMessage = "Failed to clear cleanup: \(error.localizedDescription)"
+                                showingError = true
+                            }
+                        } label: {
+                            Label("Remove Cleaned Version", systemImage: "trash")
+                        }
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -406,13 +451,86 @@ struct TranscriptionDetailView: View {
         }
     }
 
+    // MARK: - AI Cleanup Section
+
+    private var cleanupSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                // Clean Up / Re-clean button
+                Button {
+                    Task {
+                        await performCleanup()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        if isCleaningUp {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "sparkles")
+                        }
+                        Text(record.cleanedText != nil ? "Re-clean" : "Clean Up")
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.blue)
+                    .foregroundStyle(.white)
+                    .clipShape(Capsule())
+                }
+                .disabled(isCleaningUp)
+
+                Spacer()
+
+                // Before/After toggle (only visible when cleaned text exists)
+                if record.cleanedText != nil {
+                    Picker("View", selection: $showingCleanedText) {
+                        Text("Original").tag(false)
+                        Text("Cleaned").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 200)
+                }
+            }
+
+            // Cleanup stats badge
+            if let cleaned = record.cleanedText, showingCleanedText {
+                let originalWords = record.text.split(whereSeparator: \.isWhitespace).count
+                let cleanedWords = cleaned.split(whereSeparator: \.isWhitespace).count
+                let removed = originalWords - cleanedWords
+
+                if removed > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "minus.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("\(removed) filler word\(removed == 1 ? "" : "s") removed")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
     private var textSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Transcription")
                 .font(.headline)
                 .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(showingCleanedText && record.cleanedText != nil ? "Cleaned Transcription" : "Transcription")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
 
-            Text(record.text)
+                if showingCleanedText && record.cleanedText != nil {
+                    Image(systemName: "sparkles")
+                        .font(.caption)
+                        .foregroundStyle(.blue)
+                }
+            }
+
+            Text(displayedText)
                 .font(.body)
                 .textSelection(.enabled)
                 .lineSpacing(4)
@@ -450,11 +568,42 @@ struct TranscriptionDetailView: View {
         }
     }
 
+    /// The text currently displayed based on the toggle state.
+    private var displayedText: String {
+        if showingCleanedText, let cleaned = record.cleanedText {
+            return cleaned
+        }
+        return record.text
+    }
+
     private var shareText: String {
         var text = record.displayTitle + "\n\n"
-        text += record.text
+        text += displayedText
         text += "\n\n---\nRecorded \(record.formattedDate) • \(record.formattedDuration) • \(record.modelUsed)"
+        if showingCleanedText && record.cleanedText != nil {
+            text += " • AI Cleaned"
+        }
         return text
+    }
+
+    // MARK: - Actions
+
+    /// Run AI cleanup on the original text and save the result.
+    private func performCleanup() async {
+        isCleaningUp = true
+        defer { isCleaningUp = false }
+
+        let cleaned = await cleanupService.cleanup(record.text)
+
+        record.cleanedText = cleaned
+        showingCleanedText = true
+
+        do {
+            try modelContext.save()
+        } catch {
+            errorMessage = "Failed to save cleaned text: \(error.localizedDescription)"
+            showingError = true
+        }
     }
 }
 
