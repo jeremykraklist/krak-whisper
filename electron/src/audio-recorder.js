@@ -1,18 +1,14 @@
 /**
- * AudioRecorder — Records audio from the microphone using Electron's desktopCapturer
- * or the Web Audio API in the renderer process.
+ * AudioRecorder — Records audio from the microphone.
  *
- * Since we need raw PCM for whisper.cpp (16-bit, 16kHz, mono), this module
- * coordinates between the main process and a hidden recorder window that
- * accesses the microphone via the Web Audio API.
- *
- * For simplicity in v1, we use a child process approach with a platform-native
- * audio recorder (SoX/rec command or PowerShell on Windows).
+ * Uses platform-native recording tools (ffmpeg, sox, arecord, PowerShell)
+ * to capture audio as a WAV file, then returns raw PCM data for whisper.cpp.
  */
 const { execFile, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const wav = require('node-wav');
 
 class AudioRecorder {
   constructor() {
@@ -57,44 +53,52 @@ class AudioRecorder {
 
     this._isRecording = false;
 
-    // Send termination signal
-    if (this._process) {
-      if (process.platform === 'win32') {
-        // For PowerShell, we write a stop signal
-        this._process.kill('SIGTERM');
-      } else {
-        // For sox/rec, SIGINT triggers graceful stop
-        this._process.kill('SIGINT');
-      }
+    // Capture ref before clearing
+    const proc = this._process;
+    this._process = null;
 
-      // Wait for process to finish
-      await new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-          if (this._process) this._process.kill('SIGKILL');
+    if (proc) {
+      // Attach exit listener BEFORE sending kill signal to avoid race
+      const exitPromise = new Promise((resolve) => {
+        proc.on('exit', () => resolve(undefined));
+        // Safety timeout in case exit never fires
+        setTimeout(() => {
+          try { proc.kill('SIGKILL'); } catch { /* already dead */ }
           resolve(undefined);
         }, 3000);
-
-        if (this._process) {
-          this._process.on('exit', () => {
-            clearTimeout(timeout);
-            resolve(undefined);
-          });
-        } else {
-          clearTimeout(timeout);
-          resolve(undefined);
-        }
       });
 
-      this._process = null;
+      // Send termination signal
+      if (process.platform === 'win32') {
+        try { proc.kill('SIGTERM'); } catch { /* ignore */ }
+      } else {
+        // For sox/rec, SIGINT triggers graceful stop
+        try { proc.kill('SIGINT'); } catch { /* ignore */ }
+      }
+
+      await exitPromise;
     }
 
-    // Read and convert to PCM
+    // Read WAV file and parse with node-wav for correct PCM extraction
     if (this._outputPath && fs.existsSync(this._outputPath)) {
-      const wavData = fs.readFileSync(this._outputPath);
-      try { fs.unlinkSync(this._outputPath); } catch { /* ignore */ }
-      // Extract PCM data (skip 44-byte WAV header)
-      if (wavData.length > 44) {
-        return wavData.subarray(44);
+      try {
+        const wavData = fs.readFileSync(this._outputPath);
+        const decoded = wav.decode(wavData);
+
+        // Convert Float32 channel data to 16-bit PCM Buffer
+        // whisper.cpp expects 16kHz mono 16-bit signed integer
+        const channelData = decoded.channelData[0]; // mono channel
+        const pcmBuffer = Buffer.alloc(channelData.length * 2);
+        for (let i = 0; i < channelData.length; i++) {
+          const sample = Math.max(-1, Math.min(1, channelData[i]));
+          pcmBuffer.writeInt16LE(Math.round(sample * 32767), i * 2);
+        }
+        return pcmBuffer;
+      } catch (err) {
+        console.error('Failed to decode WAV file:', err.message);
+        return Buffer.alloc(0);
+      } finally {
+        try { fs.unlinkSync(this._outputPath); } catch { /* ignore */ }
       }
     }
 
@@ -102,16 +106,16 @@ class AudioRecorder {
   }
 
   /**
-   * Record on Windows using PowerShell and NAudio or ffmpeg.
-   * Falls back to a simple PowerShell script if ffmpeg isn't available.
+   * Record on Windows using ffmpeg (with device enumeration) or PowerShell.
    */
   async _startWindowsRecording() {
-    // Try ffmpeg first (commonly available)
     const ffmpegPath = await this._findExecutable('ffmpeg');
     if (ffmpegPath) {
+      // Enumerate audio devices to find the default microphone
+      const deviceName = await this._getWindowsAudioDevice(ffmpegPath);
       this._process = spawn(ffmpegPath, [
         '-f', 'dshow',
-        '-i', 'audio=default',
+        '-i', `audio=${deviceName}`,
         '-ar', '16000',
         '-ac', '1',
         '-sample_fmt', 's16',
@@ -121,10 +125,14 @@ class AudioRecorder {
       return;
     }
 
-    // Fallback: PowerShell with .NET audio capture
+    // Fallback: PowerShell with .NET audio capture (requires NAudio)
     const psScript = `
-      Add-Type -AssemblyName System.Speech
-      Add-Type -AssemblyName NAudio -ErrorAction SilentlyContinue
+      try {
+        Add-Type -AssemblyName NAudio
+      } catch {
+        Write-Error "NAudio assembly not found. Please install NAudio or use ffmpeg for audio recording."
+        exit 1
+      }
 
       $waveIn = New-Object NAudio.Wave.WaveInEvent
       $waveIn.WaveFormat = New-Object NAudio.Wave.WaveFormat(16000, 16, 1)
@@ -145,10 +153,48 @@ class AudioRecorder {
   }
 
   /**
+   * Enumerate Windows audio devices via ffmpeg and return the first microphone name.
+   * Falls back to 'Microphone' if enumeration fails.
+   * @param {string} ffmpegPath
+   * @returns {Promise<string>}
+   */
+  _getWindowsAudioDevice(ffmpegPath) {
+    return new Promise((resolve) => {
+      execFile(ffmpegPath, ['-list_devices', 'true', '-f', 'dshow', '-i', 'dummy'], {
+        timeout: 5000,
+      }, (_error, _stdout, stderr) => {
+        // ffmpeg prints device list to stderr
+        const output = stderr || '';
+        const lines = output.split('\n');
+        let inAudio = false;
+        for (const line of lines) {
+          if (line.includes('DirectShow audio devices')) {
+            inAudio = true;
+            continue;
+          }
+          if (inAudio && line.includes(']  "')) {
+            // Extract device name from line like: [dshow @ ...] "Microphone (Realtek Audio)"
+            const match = line.match(/"([^"]+)"/);
+            if (match) {
+              resolve(match[1]);
+              return;
+            }
+          }
+          // Stop if we hit video devices section
+          if (inAudio && line.includes('DirectShow video devices')) {
+            break;
+          }
+        }
+        // Fallback
+        resolve('Microphone');
+      });
+    });
+  }
+
+  /**
    * Record on macOS using sox/rec.
    */
   async _startMacRecording() {
-    // Use sox's rec command
     const recPath = await this._findExecutable('rec') || await this._findExecutable('sox');
 
     if (recPath) {
@@ -160,7 +206,6 @@ class AudioRecorder {
       return;
     }
 
-    // Fallback: ffmpeg
     const ffmpegPath = await this._findExecutable('ffmpeg');
     if (ffmpegPath) {
       this._process = spawn(ffmpegPath, [

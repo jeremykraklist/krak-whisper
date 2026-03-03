@@ -30,6 +30,8 @@ let whisperEngine;
 let modelManager;
 /** @type {boolean} */
 let isRecording = false;
+/** @type {boolean} */
+let toggleInFlight = false;
 
 // ─── Single instance lock ────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
@@ -57,9 +59,7 @@ app.whenReady().then(async () => {
   if (store.get('firstLaunch')) {
     store.set('firstLaunch', false);
     createMainWindow();
-    mainWindow.webContents.once('did-finish-load', () => {
-      mainWindow.webContents.send('show-setup');
-    });
+    sendToMainWindow('show-setup');
   }
 });
 
@@ -114,9 +114,7 @@ function updateTrayMenu() {
       label: 'Download Models',
       click: () => {
         createMainWindow();
-        mainWindow.webContents.once('did-finish-load', () => {
-          mainWindow.webContents.send('show-setup');
-        });
+        sendToMainWindow('show-setup');
       },
     },
     { type: 'separator' },
@@ -131,6 +129,28 @@ function updateTrayMenu() {
 }
 
 // ─── Windows ─────────────────────────────────────────────────────────
+
+/**
+ * Safely send a message to the main window, handling the race where
+ * the page may or may not have finished loading yet.
+ * @param {string} channel
+ * @param {*} [data]
+ */
+function sendToMainWindow(channel, data) {
+  if (!mainWindow) return;
+  const wc = mainWindow.webContents;
+
+  if (wc.isLoading()) {
+    wc.once('did-finish-load', () => {
+      if (mainWindow) {
+        mainWindow.webContents.send(channel, data);
+      }
+    });
+  } else {
+    wc.send(channel, data);
+  }
+}
+
 function createMainWindow() {
   if (mainWindow) {
     mainWindow.focus();
@@ -183,10 +203,17 @@ function createSettingsWindow() {
 
 // ─── Recording ───────────────────────────────────────────────────────
 async function toggleRecording() {
-  if (isRecording) {
-    await stopRecording();
-  } else {
-    await startRecording();
+  if (toggleInFlight) return;
+  toggleInFlight = true;
+
+  try {
+    if (isRecording) {
+      await stopRecording();
+    } else {
+      await startRecording();
+    }
+  } finally {
+    toggleInFlight = false;
   }
 }
 
@@ -195,10 +222,8 @@ async function startRecording() {
   const modelReady = await modelManager.isModelDownloaded(modelName);
   if (!modelReady) {
     createMainWindow();
-    mainWindow.webContents.once('did-finish-load', () => {
-      mainWindow.webContents.send('show-setup');
-      mainWindow.webContents.send('error', `Model "${modelName}" not downloaded. Please download it first.`);
-    });
+    sendToMainWindow('show-setup');
+    sendToMainWindow('error', `Model "${modelName}" not downloaded. Please download it first.`);
     return;
   }
 
@@ -279,15 +304,25 @@ function broadcastStatus(status) {
 }
 
 // ─── Hotkey ──────────────────────────────────────────────────────────
+
+/**
+ * Register the global hotkey. Returns true if registration succeeded.
+ * @returns {boolean}
+ */
 function registerHotkey() {
   const hotkey = store.get('hotkey');
   globalShortcut.unregisterAll();
   try {
-    globalShortcut.register(hotkey, () => {
+    const success = globalShortcut.register(hotkey, () => {
       toggleRecording();
     });
+    if (!success) {
+      console.error(`Failed to register hotkey "${hotkey}" — may be in use by another app.`);
+    }
+    return success;
   } catch (err) {
     console.error(`Failed to register hotkey "${hotkey}":`, err.message);
+    return false;
   }
 }
 
@@ -303,12 +338,18 @@ ipcMain.handle('get-settings', () => {
 
 ipcMain.handle('save-settings', (_event, settings) => {
   if (settings.model) store.set('model', settings.model);
-  if (settings.hotkey) {
-    store.set('hotkey', settings.hotkey);
-    registerHotkey();
-  }
   if (typeof settings.autoCopy === 'boolean') store.set('autoCopy', settings.autoCopy);
   if (typeof settings.showNotification === 'boolean') store.set('showNotification', settings.showNotification);
+
+  // Handle hotkey change — validate and report registration result
+  if (settings.hotkey) {
+    store.set('hotkey', settings.hotkey);
+    const registered = registerHotkey();
+    if (!registered) {
+      return { success: false, error: `Hotkey "${settings.hotkey}" could not be registered. It may be in use by another application.` };
+    }
+  }
+
   updateTrayMenu();
   return { success: true };
 });

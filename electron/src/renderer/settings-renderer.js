@@ -6,13 +6,8 @@ const showNotificationCheckbox = document.getElementById('show-notification');
 const settingsForm = document.getElementById('settings-form');
 const saveStatus = document.getElementById('save-status');
 
-// ─── Electron key → accelerator mapping ──────────────────────────────
-const KEY_MAP = {
-  Control: 'CommandOrControl',
-  Meta: 'CommandOrControl',
-  Alt: 'Alt',
-  Shift: 'Shift',
-};
+// Keys that are NOT valid as the final key (modifier-only combos are invalid)
+const MODIFIER_KEYS = new Set(['Control', 'Meta', 'Alt', 'Shift']);
 
 // ─── Init ────────────────────────────────────────────────────────────
 async function init() {
@@ -36,20 +31,38 @@ hotkeyInput.addEventListener('keydown', (e) => {
 
   // Add the actual key (if it's not just a modifier)
   const key = e.key;
-  if (!['Control', 'Meta', 'Alt', 'Shift'].includes(key)) {
+  if (!MODIFIER_KEYS.has(key)) {
     // Normalize key names for Electron accelerator format
     const normalizedKey = key === ' ' ? 'Space' : key.length === 1 ? key.toUpperCase() : key;
     parts.push(normalizedKey);
-  }
 
-  if (parts.length > 1) {
-    hotkeyInput.value = parts.join('+');
+    // Only update if we have at least one modifier + one non-modifier key
+    if (parts.length >= 2) {
+      hotkeyInput.value = parts.join('+');
+    }
   }
+  // If only modifiers are pressed, don't update — wait for a non-modifier key
 });
 
 // ─── Save ────────────────────────────────────────────────────────────
 settingsForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+
+  // Validate hotkey has a non-modifier key
+  const hotkey = hotkeyInput.value;
+  const hotkeyParts = hotkey.split('+');
+  const nonModifiers = hotkeyParts.filter((p) =>
+    !['CommandOrControl', 'Alt', 'Shift', 'Control', 'Meta'].includes(p)
+  );
+  if (nonModifiers.length === 0) {
+    saveStatus.textContent = '✗ Hotkey must include a non-modifier key';
+    saveStatus.style.color = '#e74c3c';
+    setTimeout(() => {
+      saveStatus.textContent = '';
+      saveStatus.style.color = '';
+    }, 3000);
+    return;
+  }
 
   const settings = {
     model: modelSelect.value,
@@ -62,14 +75,15 @@ settingsForm.addEventListener('submit', async (e) => {
 
   if (result.success) {
     saveStatus.textContent = '✓ Settings saved!';
+    saveStatus.style.color = '';
     setTimeout(() => { saveStatus.textContent = ''; }, 2000);
   } else {
-    saveStatus.textContent = '✗ Failed to save';
+    saveStatus.textContent = result.error || '✗ Failed to save';
     saveStatus.style.color = '#e74c3c';
     setTimeout(() => {
       saveStatus.textContent = '';
       saveStatus.style.color = '';
-    }, 2000);
+    }, 4000);
   }
 });
 

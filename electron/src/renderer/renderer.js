@@ -132,13 +132,21 @@ async function loadModels() {
         progressBar.appendChild(progressFill);
         actions.insertBefore(progressBar, downloadBtn);
 
-        const result = await window.krakwhisper.downloadModel(model.name);
-        if (result.success) {
-          await loadModels();
-        } else {
+        try {
+          const result = await window.krakwhisper.downloadModel(model.name);
+          if (result.success) {
+            await loadModels();
+          } else {
+            downloadBtn.disabled = false;
+            downloadBtn.textContent = '⬇ Retry';
+            progressBar.remove();
+          }
+        } catch (err) {
+          // Handle IPC rejection (network error, timeout, etc.)
           downloadBtn.disabled = false;
           downloadBtn.textContent = '⬇ Retry';
           progressBar.remove();
+          console.error('Download failed:', err);
         }
       });
       actions.appendChild(downloadBtn);

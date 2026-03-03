@@ -36,17 +36,20 @@ class WhisperEngine {
     // Write audio to temp WAV file
     const tempDir = os.tmpdir();
     const wavPath = path.join(tempDir, `krakwhisper-${Date.now()}.wav`);
+    const txtPath = wavPath + '.txt';
 
     try {
       this._writeWav(wavPath, audioBuffer);
       const text = await this._runWhisper(wavPath, modelPath);
       return text;
     } finally {
-      // Clean up temp file
-      try {
-        if (fs.existsSync(wavPath)) fs.unlinkSync(wavPath);
-      } catch {
-        // Ignore cleanup errors
+      // Clean up all temp files
+      for (const tempFile of [wavPath, txtPath]) {
+        try {
+          if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+        } catch {
+          // Ignore cleanup errors
+        }
       }
     }
   }
@@ -124,15 +127,17 @@ class WhisperEngine {
         }
 
         // whisper.cpp outputs text to stdout, sometimes with leading/trailing whitespace
-        const text = stdout.trim();
+        let text = stdout.trim();
 
         // Also check for .txt output file (whisper.cpp sometimes writes to file)
         const txtPath = wavPath + '.txt';
-        if (!text && fs.existsSync(txtPath)) {
+        if (fs.existsSync(txtPath)) {
           const fileText = fs.readFileSync(txtPath, 'utf-8').trim();
-          try { fs.unlinkSync(txtPath); } catch { /* ignore */ }
-          resolve(fileText);
-          return;
+          // Use file text if stdout was empty
+          if (!text && fileText) {
+            text = fileText;
+          }
+          // Note: txtPath cleanup is handled by the caller's finally block
         }
 
         resolve(text);

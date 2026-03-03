@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const http = require('http');
 const { app } = require('electron');
 
 /**
@@ -10,6 +11,15 @@ const { app } = require('electron');
  * @property {string} url
  * @property {number} size - Approximate size in MB
  */
+
+/** Maximum number of HTTP redirects to follow */
+const MAX_REDIRECTS = 5;
+
+/** Download timeout in ms (10 minutes for large models) */
+const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** Allowed download hosts for security */
+const ALLOWED_HOSTS = ['huggingface.co', 'cdn-lfs.huggingface.co', 'cdn-lfs-us-1.huggingface.co'];
 
 /** @type {ModelInfo[]} */
 const AVAILABLE_MODELS = [
@@ -91,7 +101,7 @@ class ModelManager {
   }
 
   /**
-   * Download a model from HuggingFace.
+   * Download a model from HuggingFace with redirect handling and timeouts.
    * @param {string} modelName
    * @param {(progress: number) => void} onProgress - Progress callback (0-100)
    * @returns {Promise<string>} Local path to downloaded model
@@ -107,16 +117,48 @@ class ModelManager {
       const localPath = path.join(this.modelsDir, model.filename);
       const tempPath = localPath + '.download';
 
-      // Follow redirects manually
-      const download = (url) => {
-        https.get(url, (response) => {
+      // Overall download timeout
+      const overallTimeout = setTimeout(() => {
+        reject(new Error(`Download timed out after ${DOWNLOAD_TIMEOUT_MS / 1000}s`));
+      }, DOWNLOAD_TIMEOUT_MS);
+
+      /**
+       * Follow redirects manually with a redirect counter.
+       * @param {string} url
+       * @param {number} redirectCount
+       */
+      const download = (url, redirectCount = 0) => {
+        if (redirectCount > MAX_REDIRECTS) {
+          clearTimeout(overallTimeout);
+          reject(new Error(`Too many redirects (>${MAX_REDIRECTS})`));
+          return;
+        }
+
+        // Validate URL host for security
+        try {
+          const parsed = new URL(url);
+          if (!ALLOWED_HOSTS.some((h) => parsed.hostname === h || parsed.hostname.endsWith('.' + h))) {
+            // Allow the redirect but log a warning
+            console.warn(`Download redirected to unexpected host: ${parsed.hostname}`);
+          }
+        } catch {
+          clearTimeout(overallTimeout);
+          reject(new Error(`Invalid redirect URL: ${url}`));
+          return;
+        }
+
+        const client = url.startsWith('https') ? https : http;
+
+        const req = client.get(url, { timeout: 30000 }, (response) => {
           // Handle redirects
           if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-            download(response.headers.location);
+            response.resume(); // Drain the response
+            download(response.headers.location, redirectCount + 1);
             return;
           }
 
           if (response.statusCode !== 200) {
+            clearTimeout(overallTimeout);
             reject(new Error(`Download failed with status ${response.statusCode}`));
             return;
           }
@@ -136,18 +178,35 @@ class ModelManager {
 
           file.on('finish', () => {
             file.close(() => {
-              // Rename temp file to final name
-              fs.renameSync(tempPath, localPath);
-              resolve(localPath);
+              clearTimeout(overallTimeout);
+              // Rename temp file to final name (atomic on most filesystems)
+              try {
+                fs.renameSync(tempPath, localPath);
+                resolve(localPath);
+              } catch (err) {
+                reject(new Error(`Failed to save model: ${err.message}`));
+              }
             });
           });
 
           file.on('error', (err) => {
-            fs.unlinkSync(tempPath).catch(() => {});
+            clearTimeout(overallTimeout);
+            try {
+              if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+            } catch {
+              // Ignore cleanup errors
+            }
             reject(err);
           });
-        }).on('error', (err) => {
+        });
+
+        req.on('error', (err) => {
+          clearTimeout(overallTimeout);
           reject(err);
+        });
+
+        req.on('timeout', () => {
+          req.destroy(new Error('Connection timed out'));
         });
       };
 
