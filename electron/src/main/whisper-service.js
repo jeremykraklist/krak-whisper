@@ -52,6 +52,9 @@ class WhisperService {
    * @returns {{ url: string, filename: string }}
    */
   getBinaryDownloadInfo() {
+    // whisper.cpp provides pre-built binaries via GitHub Releases.
+    // Users should download the appropriate binary for their platform
+    // and place it in the whisper-bin directory.
     const version = 'v1.5.4';
     const base = `https://github.com/ggerganov/whisper.cpp/releases/download/${version}`;
 
@@ -71,6 +74,24 @@ class WhisperService {
       url: `${base}/whisper-bin-x64.zip`,
       filename: 'whisper-bin-x64.zip',
     };
+  }
+
+  /**
+   * Get instructions for manual binary setup.
+   * @returns {string}
+   */
+  getBinarySetupInstructions() {
+    const info = this.getBinaryDownloadInfo();
+    return (
+      `whisper.cpp binary not found.\n\n` +
+      `To set up:\n` +
+      `1. Download from: ${info.url}\n` +
+      `2. Extract the archive\n` +
+      `3. Place the binary (main.exe or main) in:\n` +
+      `   ${this._binDir}\n\n` +
+      `Alternatively, build whisper.cpp from source:\n` +
+      `https://github.com/ggerganov/whisper.cpp#build`
+    );
   }
 
   /**

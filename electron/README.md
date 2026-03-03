@@ -53,7 +53,7 @@ Models are downloaded from [HuggingFace](https://huggingface.co/ggerganov/whispe
 
 ## Architecture
 
-```
+```text
 electron/
 ├── src/
 │   ├── main/           # Electron main process

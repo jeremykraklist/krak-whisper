@@ -20,17 +20,15 @@ contextBridge.exposeInMainWorld('krakwhisper', {
   getRecordingState: () => ipcRenderer.invoke('get-recording-state'),
   toggleRecording: () => ipcRenderer.invoke('toggle-recording'),
 
-  // Events from main process
+  // Events from main process — return disposer functions for cleanup
   onDownloadProgress: (callback) => {
-    ipcRenderer.on('download-progress', (_event, data) => callback(data));
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('download-progress', handler);
+    return () => ipcRenderer.removeListener('download-progress', handler);
   },
   onTranscriptionResult: (callback) => {
-    ipcRenderer.on('transcription-result', (_event, text) => callback(text));
-  },
-
-  // Cleanup
-  removeAllListeners: () => {
-    ipcRenderer.removeAllListeners('download-progress');
-    ipcRenderer.removeAllListeners('transcription-result');
+    const handler = (_event, text) => callback(text);
+    ipcRenderer.on('transcription-result', handler);
+    return () => ipcRenderer.removeListener('transcription-result', handler);
   },
 });

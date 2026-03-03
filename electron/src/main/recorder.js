@@ -113,8 +113,11 @@ class Recorder {
   async _startWindowsRecording() {
     // PowerShell script to record audio using .NET System.Media
     // Falls back to ffmpeg if available
+    const escapedOutputPath = this._outputPath
+      .replace(/'/g, "''")
+      .replace(/\\/g, '\\\\');
     const psScript = `
-      $outputPath = '${this._outputPath.replace(/\\/g, '\\\\')}'
+      $outputPath = '${escapedOutputPath}'
       
       # Try ffmpeg first (most reliable)
       $ffmpeg = Get-Command ffmpeg -ErrorAction SilentlyContinue
@@ -144,6 +147,8 @@ class Recorder {
     `.trim();
 
     return new Promise((resolve, reject) => {
+      let settled = false;
+
       this._process = execFile(
         'powershell.exe',
         ['-NoProfile', '-Command', psScript],
@@ -155,20 +160,43 @@ class Recorder {
         }
       );
 
-      this._process.stdout?.on('data', (data) => {
-        if (data.toString().includes('RECORDING_STARTED')) {
+      this._process.on('spawn', () => {
+        // Process started successfully
+        if (!settled) {
+          settled = true;
           resolve();
         }
       });
 
-      // Resolve after a short delay anyway
-      setTimeout(resolve, 1000);
+      this._process.on('error', (err) => {
+        if (!settled) {
+          settled = true;
+          reject(new Error(`Failed to start PowerShell recording: ${err.message}`));
+        }
+      });
+
+      this._process.stdout?.on('data', (data) => {
+        if (data.toString().includes('RECORDING_STARTED') && !settled) {
+          settled = true;
+          resolve();
+        }
+      });
+
+      // Fallback timeout in case spawn event doesn't fire
+      setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
+      }, 2000);
     });
   }
 
   async _startSoxRecording() {
     // Use sox (rec command) on macOS/Linux
     return new Promise((resolve, reject) => {
+      let settled = false;
+
       this._process = execFile(
         'rec',
         [
@@ -187,12 +215,31 @@ class Recorder {
         }
       );
 
+      this._process.on('spawn', () => {
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
+      });
+
+      this._process.on('error', (err) => {
+        if (!settled) {
+          settled = true;
+          reject(new Error(`Failed to start sox recording: ${err.message}`));
+        }
+      });
+
       this._process.stderr?.on('data', (data) => {
         log.info(`sox: ${data}`);
       });
 
-      // Resolve after a short delay
-      setTimeout(resolve, 500);
+      // Fallback timeout
+      setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
+      }, 1000);
     });
   }
 

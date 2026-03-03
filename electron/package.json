@@ -21,7 +21,8 @@
   "devDependencies": {
     "electron": "^29.1.0",
     "electron-builder": "^24.13.3",
-    "cross-env": "^7.0.3"
+    "cross-env": "^7.0.3",
+    "eslint": "^8.57.0"
   },
   "build": {
     "appId": "com.krakwhisper.windows",

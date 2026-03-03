@@ -235,7 +235,7 @@ body {
   max-height: 100px;
   overflow-y: auto;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: break-word;
   user-select: text;
 }
 

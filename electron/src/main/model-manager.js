@@ -70,6 +70,8 @@ class ModelManager {
   constructor(userDataPath) {
     this._modelsDir = path.join(userDataPath, 'models');
     fs.mkdirSync(this._modelsDir, { recursive: true });
+    /** @type {Map<string, Promise<string>>} */
+    this._activeDownloads = new Map();
   }
 
   /**
@@ -128,12 +130,17 @@ class ModelManager {
       throw new Error(`Unknown model: ${modelName}`);
     }
 
+    // Prevent concurrent downloads of the same model
+    if (this._activeDownloads.has(modelName)) {
+      return this._activeDownloads.get(modelName);
+    }
+
     const outputPath = path.join(this._modelsDir, model.filename);
     const tempPath = `${outputPath}.tmp`;
 
     log.info(`Downloading model "${modelName}" from ${model.url}`);
 
-    return new Promise((resolve, reject) => {
+    const promise = new Promise((resolve, reject) => {
       const download = (url, redirectCount = 0) => {
         if (redirectCount > 5) {
           reject(new Error('Too many redirects'));
@@ -199,7 +206,12 @@ class ModelManager {
       };
 
       download(model.url);
+    }).finally(() => {
+      this._activeDownloads.delete(modelName);
     });
+
+    this._activeDownloads.set(modelName, promise);
+    return promise;
   }
 
   /**

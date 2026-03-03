@@ -131,14 +131,15 @@ async function downloadModel(modelName) {
   downloadingModels.add(modelName);
   await loadModels(); // Re-render to show progress bar
 
-  const result = await api.downloadModel(modelName);
-
-  downloadingModels.delete(modelName);
-
-  if (result.success) {
-    await loadModels(); // Re-render to show as downloaded
-  } else {
-    alert(`Download failed: ${result.error}`);
+  try {
+    const result = await api.downloadModel(modelName);
+    if (!result.success) {
+      alert(`Download failed: ${result.error}`);
+    }
+  } catch (err) {
+    alert(`Download failed: ${err.message}`);
+  } finally {
+    downloadingModels.delete(modelName);
     await loadModels();
   }
 }
@@ -148,11 +149,15 @@ async function deleteModel(modelName) {
     return;
   }
 
-  const result = await api.deleteModel(modelName);
-  if (result.success) {
+  try {
+    const result = await api.deleteModel(modelName);
+    if (!result.success) {
+      alert(`Delete failed: ${result.error}`);
+    }
+  } catch (err) {
+    alert(`Delete failed: ${err.message}`);
+  } finally {
     await loadModels();
-  } else {
-    alert(`Delete failed: ${result.error}`);
   }
 }
 
@@ -186,9 +191,11 @@ function updateStatusUI() {
 function setupEventListeners() {
   // Record button
   recordBtn.addEventListener('click', async () => {
-    await api.toggleRecording();
-    isRecording = !isRecording;
-    updateStatusUI();
+    try {
+      await api.toggleRecording();
+    } finally {
+      await updateRecordingState();
+    }
   });
 
   // Model selection

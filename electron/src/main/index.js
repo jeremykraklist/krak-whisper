@@ -99,12 +99,17 @@ async function toggleRecording() {
       trayManager?.setTranscribing(false);
 
       if (text && text.trim()) {
-        clipboard.writeText(text.trim());
-        log.info(`Transcription copied to clipboard: ${text.trim().substring(0, 100)}...`);
+        const normalizedText = text.trim();
+        if (settings.get('autoClipboard', true)) {
+          clipboard.writeText(normalizedText);
+          log.info(`Transcription copied to clipboard (${normalizedText.length} chars)`);
+        } else {
+          log.info(`Transcription completed (${normalizedText.length} chars)`);
+        }
 
         // Notify renderer if settings window is open
         if (settingsWindow) {
-          settingsWindow.webContents.send('transcription-result', text.trim());
+          settingsWindow.webContents.send('transcription-result', normalizedText);
         }
       } else {
         log.warn('Empty transcription result');
@@ -116,7 +121,6 @@ async function toggleRecording() {
   } else {
     // Start recording
     const currentModel = settings.get('model', 'base');
-    const modelPath = modelManager.getModelPath(currentModel);
 
     if (!modelManager.isModelDownloaded(currentModel)) {
       log.warn(`Model "${currentModel}" not downloaded yet`);
@@ -131,6 +135,7 @@ async function toggleRecording() {
       return;
     }
 
+    const modelPath = modelManager.getModelPath(currentModel);
     whisperService.setModelPath(modelPath);
     isRecording = true;
     trayManager?.setRecording(true);

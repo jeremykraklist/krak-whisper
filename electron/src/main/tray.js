@@ -37,6 +37,9 @@ class TrayManager {
     try {
       const iconPath = this._getAssetPath(filename);
       const icon = nativeImage.createFromPath(iconPath);
+      if (icon.isEmpty()) {
+        throw new Error(`Invalid or missing tray icon: ${iconPath}`);
+      }
       return icon.resize({ width: 16, height: 16 });
     } catch {
       // Fallback: create a simple colored icon
