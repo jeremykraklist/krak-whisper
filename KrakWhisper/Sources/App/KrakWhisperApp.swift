@@ -1,5 +1,6 @@
 #if os(iOS)
 import SwiftUI
+import SwiftData
 
 /// Main entry point for KrakWhisper iOS app.
 @main
@@ -25,6 +26,7 @@ struct KrakWhisperApp: App {
                 downloadManager.syncModelsToSharedContainer()
             }
         }
+        .modelContainer(for: TranscriptionRecord.self)
     }
 }
 #endif

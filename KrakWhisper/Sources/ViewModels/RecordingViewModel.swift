@@ -7,6 +7,10 @@ import UIKit
 import AppKit
 #endif
 
+extension Notification.Name {
+    static let transcriptionCompleted = Notification.Name("krakwhisper.transcriptionCompleted")
+}
+
 /// Recording states for the UI.
 public enum RecordingState: Equatable, Sendable {
     case idle
@@ -233,6 +237,17 @@ public final class RecordingViewModel {
             transcribedText = result.text
             transcriptionDuration = result.duration
             state = .completed
+
+            // Save to history via notification (picked up by HistoryView or any listener)
+            NotificationCenter.default.post(
+                name: .transcriptionCompleted,
+                object: nil,
+                userInfo: [
+                    "text": result.text,
+                    "duration": result.duration,
+                    "modelSize": selectedModelSize.rawValue
+                ]
+            )
 
             // Auto-copy to clipboard if enabled in Settings
             let autoCopyEnabled = UserDefaults.standard.object(forKey: "krakwhisper.autoCopyToClipboard") as? Bool ?? true
