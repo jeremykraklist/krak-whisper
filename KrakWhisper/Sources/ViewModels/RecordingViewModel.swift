@@ -48,6 +48,11 @@ public final class RecordingViewModel {
 
     public init(transcriptionService: any TranscriptionServiceProtocol = WhisperTranscriptionService()) {
         self.transcriptionService = transcriptionService
+        // Read persisted model selection from UserDefaults
+        if let savedRawValue = UserDefaults.standard.string(forKey: "krakwhisper.selectedModel"),
+           let savedModel = WhisperModelSize(rawValue: savedRawValue) {
+            self.selectedModelSize = savedModel
+        }
     }
 
     // MARK: - Model Management
