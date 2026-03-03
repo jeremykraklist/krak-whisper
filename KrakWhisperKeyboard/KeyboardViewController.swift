@@ -39,8 +39,8 @@ final class KeyboardViewController: UIInputViewController {
     private var appIsReady = false
     
     // Audio
-    private var audioEngine: AVAudioEngine?
-    private var recordedFrames: [Float] = []
+    private var audioRecorder: AVAudioRecorder?
+    private var recordingURL: URL?
     private let sampleRate: Double = 16_000
     private var recordingDuration: TimeInterval = 0
     private var durationTimer: Timer?
@@ -344,7 +344,7 @@ final class KeyboardViewController: UIInputViewController {
     
     /// Step 2: Record audio
     private func startRecording() {
-        recordedFrames = []; recordingDuration = 0
+        recordingDuration = 0
         
         // Check Full Access is enabled (required for mic + network)
         guard hasFullAccess else {
@@ -356,39 +356,33 @@ final class KeyboardViewController: UIInputViewController {
         
         let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.record, mode: .measurement, options: [])
-            try session.setPreferredSampleRate(sampleRate)
+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
             try session.setActive(true, options: [])
         } catch {
-            statusLabel.text = "⚠️ Mic access: \(error.localizedDescription)"
+            statusLabel.text = "⚠️ \(error.localizedDescription)"
             statusLabel.textColor = .systemRed
             recordingState = .idle; if let m = micButton { updateMic(m) }
             return
         }
         
-        let engine = AVAudioEngine()
-        let input = engine.inputNode
-        let fmt = input.outputFormat(forBus: 0)
-        guard let desired = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false) else {
-            recordingState = .idle; if let m = micButton { updateMic(m) }; return
-        }
-        let conv = AVAudioConverter(from: fmt, to: desired)
+        // AVAudioRecorder is more reliable than AVAudioEngine in keyboard extensions
+        let tempDir = FileManager.default.temporaryDirectory
+        let url = tempDir.appendingPathComponent("kw-rec.wav")
+        recordingURL = url
         
-        input.installTap(onBus: 0, bufferSize: 1024, format: fmt) { [weak self] buf, _ in
-            guard let self, let conv else { return }
-            let fc = AVAudioFrameCount(Double(buf.frameLength) * self.sampleRate / fmt.sampleRate)
-            guard let cb = AVAudioPCMBuffer(pcmFormat: desired, frameCapacity: fc) else { return }
-            var err: NSError?
-            let st = conv.convert(to: cb, error: &err) { _, os in os.pointee = .haveData; return buf }
-            if st == .haveData, let cd = cb.floatChannelData {
-                let frames = Array(UnsafeBufferPointer(start: cd[0], count: Int(cb.frameLength)))
-                DispatchQueue.main.async { self.recordedFrames.append(contentsOf: frames) }
-            }
-        }
+        let settings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatLinearPCM),
+            AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false,
+        ]
         
         do {
-            try engine.start()
-            audioEngine = engine
+            let recorder = try AVAudioRecorder(url: url, settings: settings)
+            recorder.record()
+            audioRecorder = recorder
             recordingState = .recording
             if let m = micButton { updateMic(m) }
             durationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -399,20 +393,19 @@ final class KeyboardViewController: UIInputViewController {
                 if self.recordingDuration >= 60 { self.stopAndTranscribe() }
             }
         } catch {
-            statusLabel.text = "Mic: \(error.localizedDescription)"; statusLabel.textColor = .systemRed
+            statusLabel.text = "Rec: \(error.localizedDescription)"
+            statusLabel.textColor = .systemRed
             recordingState = .idle; if let m = micButton { updateMic(m) }
         }
     }
     
     /// Step 3: Stop recording and transcribe (IPC primary, API fallback)
     private func stopAndTranscribe() {
-        audioEngine?.inputNode.removeTap(onBus: 0)
-        audioEngine?.stop(); audioEngine = nil
+        audioRecorder?.stop(); audioRecorder = nil
         durationTimer?.invalidate(); durationTimer = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         
-        let frames = recordedFrames
-        guard frames.count > 1600 else {
+        guard recordingDuration > 0.2 else {
             statusLabel.text = "Too short"; statusLabel.textColor = .systemOrange
             recordingState = .idle; if let m = micButton { updateMic(m) }; return
         }
@@ -420,7 +413,9 @@ final class KeyboardViewController: UIInputViewController {
         recordingState = .transcribing
         if let m = micButton { updateMic(m) }
         
-        let wavData = encodeWAV(samples: frames)
+        guard let recURL = recordingURL, let wavData = try? Data(contentsOf: recURL) else {
+            handleError("No recording data"); return
+        }
         
         // Try IPC first
         if appIsReady, let audioURL = sharedURL?.appendingPathComponent(audioFileName),
@@ -498,8 +493,7 @@ final class KeyboardViewController: UIInputViewController {
             // IPC error — try API fallback
             statusLabel.text = "⏳ Whisper (cloud)..."
             statusLabel.textColor = .systemCyan
-            let wavData = encodeWAV(samples: recordedFrames)
-            sendToWhisperAPI(wavData: wavData)
+            if let ru = recordingURL, let wd = try? Data(contentsOf: ru) { sendToWhisperAPI(wavData: wd) } else { handleError("No data") }
         } else if !text.isEmpty {
             textDocumentProxy.insertText(text + " ")
             let dur = String(format: "%.1fs", Double(durationMs) / 1000)
@@ -588,11 +582,10 @@ final class KeyboardViewController: UIInputViewController {
     }
     
     private func cancelRecording() {
-        audioEngine?.inputNode.removeTap(onBus: 0)
-        audioEngine?.stop(); audioEngine = nil
+        audioRecorder?.stop(); audioRecorder = nil
         durationTimer?.invalidate(); pollTimer?.invalidate()
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        recordedFrames = []; recordingState = .idle
+        recordingState = .idle
         if let m = micButton { updateMic(m) }
     }
     
