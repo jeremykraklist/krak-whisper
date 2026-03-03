@@ -213,6 +213,19 @@ public final class RecordingViewModel {
             transcribedText = result.text
             transcriptionDuration = result.duration
             state = .completed
+
+            // Auto-copy to clipboard if enabled in Settings
+            let autoCopyEnabled = UserDefaults.standard.object(forKey: "krakwhisper.autoCopyToClipboard") as? Bool ?? true
+            if autoCopyEnabled && !result.text.isEmpty {
+                #if os(iOS)
+                ClipboardService.copy(result.text)
+                #endif
+                showCopyFeedback = true
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
+                    showCopyFeedback = false
+                }
+            }
         } catch {
             state = .error("Transcription failed: \(error.localizedDescription)")
         }
@@ -224,7 +237,7 @@ public final class RecordingViewModel {
         guard !transcribedText.isEmpty else { return }
 
         #if os(iOS)
-        UIPasteboard.general.string = transcribedText
+        ClipboardService.copy(transcribedText)
         #elseif os(macOS)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(transcribedText, forType: .string)

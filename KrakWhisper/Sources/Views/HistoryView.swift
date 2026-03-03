@@ -183,6 +183,8 @@ struct HistoryRowView: View {
 
     let record: TranscriptionRecord
 
+    @State private var showCopyConfirmation = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -197,6 +199,22 @@ struct HistoryRowView: View {
                         .foregroundStyle(.yellow)
                         .font(.caption)
                 }
+
+                // Quick copy button
+                Button {
+                    ClipboardService.copy(record.text)
+                    showCopyConfirmation = true
+                    Task {
+                        try? await Task.sleep(for: .seconds(1.5))
+                        showCopyConfirmation = false
+                    }
+                } label: {
+                    Image(systemName: showCopyConfirmation ? "checkmark.circle.fill" : "doc.on.doc")
+                        .font(.system(size: 16))
+                        .foregroundStyle(showCopyConfirmation ? .green : .secondary)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .buttonStyle(.plain)
             }
 
             Text(record.text)
@@ -251,6 +269,7 @@ struct TranscriptionDetailView: View {
     @State private var showingShareSheet = false
     @State private var showingError = false
     @State private var errorMessage = ""
+    @State private var showCopiedInline = false
 
     var body: some View {
         ScrollView {
@@ -295,7 +314,7 @@ struct TranscriptionDetailView: View {
 
                 Menu {
                     Button {
-                        UIPasteboard.general.string = record.text
+                        ClipboardService.copy(record.text)
                     } label: {
                         Label("Copy Text", systemImage: "doc.on.doc")
                     }
@@ -388,7 +407,7 @@ struct TranscriptionDetailView: View {
     }
 
     private var textSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Transcription")
                 .font(.headline)
                 .foregroundStyle(.secondary)
@@ -397,6 +416,37 @@ struct TranscriptionDetailView: View {
                 .font(.body)
                 .textSelection(.enabled)
                 .lineSpacing(4)
+
+            // Inline action buttons for quick access
+            HStack(spacing: 12) {
+                Button {
+                    ClipboardService.copy(record.text)
+                    showCopiedInline = true
+                    Task {
+                        try? await Task.sleep(for: .seconds(2))
+                        showCopiedInline = false
+                    }
+                } label: {
+                    Label(showCopiedInline ? "Copied!" : "Copy", systemImage: showCopiedInline ? "checkmark" : "doc.on.doc")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(showCopiedInline ? .green : .accentColor)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(.fill.tertiary)
+                        .clipShape(Capsule())
+                }
+                .animation(.easeInOut, value: showCopiedInline)
+
+                ShareLink(item: shareText) {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                        .font(.subheadline.weight(.medium))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(.fill.tertiary)
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.top, 4)
         }
     }
 
