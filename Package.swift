@@ -21,7 +21,16 @@ let package = Package(
             dependencies: [
                 .product(name: "SwiftWhisper", package: "SwiftWhisper")
             ],
-            path: "KrakWhisper/Sources"
+            path: "KrakWhisper/Sources",
+            exclude: [
+                // TranscriptionRecord uses SwiftData @Model macro which requires full Xcode.
+                // The iOS app builds via KrakWhisperApp.xcodeproj (which has Xcode).
+                // The macOS menu bar app (KrakWhisperMac) does not use TranscriptionRecord.
+                // Safety: all files that reference TranscriptionRecord (KrakWhisperApp.swift,
+                // MainTabView.swift, HistoryView.swift) are wrapped in #if os(iOS) guards,
+                // so they compile out cleanly on macOS SPM builds.
+                "Models/TranscriptionRecord.swift"
+            ]
         ),
         .target(
             name: "KrakWhisperKeyboard",

@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import KrakWhisper
 
@@ -9,6 +10,7 @@ import KrakWhisper
 /// - Shows/hides the popover on click
 /// - Registers the global hotkey for dictation
 /// - Coordinates the DictationViewModel lifecycle
+/// - Manages the floating widget window
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
@@ -17,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     let dictationViewModel = DictationViewModel()
     private let hotkeyManager = HotkeyManager()
     private var statusBarController: StatusBarController!
+    private var floatingWidgetController: FloatingWidgetController!
+    private var widgetObserver: Any?
 
     // MARK: - NSApplicationDelegate
 
@@ -26,6 +30,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         // Set up status bar icon and popover
         statusBarController = StatusBarController(dictationViewModel: dictationViewModel)
+
+        // Set up floating widget
+        floatingWidgetController = FloatingWidgetController(dictationViewModel: dictationViewModel)
+        if UserDefaults.standard.object(forKey: "krakwhisper.mac.showFloatingWidget") == nil {
+            // Default to showing the widget on first launch
+            UserDefaults.standard.set(true, forKey: "krakwhisper.mac.showFloatingWidget")
+        }
+        if UserDefaults.standard.bool(forKey: "krakwhisper.mac.showFloatingWidget") {
+            floatingWidgetController.show()
+        }
+
+        // Watch for widget preference changes
+        widgetObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            let shouldShow = UserDefaults.standard.bool(forKey: "krakwhisper.mac.showFloatingWidget")
+            if shouldShow && !self.floatingWidgetController.isVisible {
+                self.floatingWidgetController.show()
+            } else if !shouldShow && self.floatingWidgetController.isVisible {
+                self.floatingWidgetController.hide()
+            }
+        }
 
         // Register global hotkey (Cmd+Shift+W)
         hotkeyManager.onHotkeyPressed = { [weak self] in
@@ -50,5 +79,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     func applicationWillTerminate(_ notification: Notification) {
         hotkeyManager.unregister()
+        if let widgetObserver {
+            NotificationCenter.default.removeObserver(widgetObserver)
+        }
     }
 }

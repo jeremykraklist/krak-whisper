@@ -174,10 +174,15 @@ public final class WhisperTranscriptionService: TranscriptionServiceProtocol, @u
                 )
             }
 
-            let fullText = segments
-                .map { $0.text.trimmingCharacters(in: .whitespaces) }
+            var fullText = segments
+                .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .joined(separator: " ")
-                .trimmingCharacters(in: .whitespaces)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Strip leading ">>" prefix that some models (e.g. medium) prepend
+            while fullText.hasPrefix(">>") {
+                fullText = String(fullText.dropFirst(2)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
 
             return TranscriptionResult(
                 text: fullText,
