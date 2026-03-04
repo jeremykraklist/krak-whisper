@@ -5,6 +5,8 @@ const Store = require('electron-store');
 const { AudioRecorder } = require('./audio-recorder');
 const { WhisperEngine } = require('./whisper-engine');
 const { ModelManager } = require('./model-manager');
+const { ServerManager } = require('./server-manager');
+const { StartupManager } = require('./startup-manager');
 
 /** @type {Store} */
 const store = new Store({
@@ -13,7 +15,9 @@ const store = new Store({
     hotkey: 'CommandOrControl+Shift+W',
     autoCopy: true,
     autoPaste: true,
+    autoCleanup: false,
     showNotification: true,
+    launchAtStartup: false,
     firstLaunch: true,
   },
 });
@@ -32,10 +36,16 @@ let recorder;
 let whisperEngine;
 /** @type {ModelManager} */
 let modelManager;
+/** @type {ServerManager} */
+let serverManager;
+/** @type {StartupManager} */
+let startupManager;
 /** @type {boolean} */
 let isRecording = false;
 /** @type {boolean} */
 let toggleInFlight = false;
+/** @type {boolean} */
+let isQuitting = false;
 
 // ─── Single instance lock ────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
@@ -55,10 +65,24 @@ app.whenReady().then(async () => {
   recorder = new AudioRecorder();
   modelManager = new ModelManager();
   whisperEngine = new WhisperEngine(modelManager);
+  serverManager = new ServerManager();
+  startupManager = new StartupManager();
+
+  // Forward server status changes to settings window
+  serverManager.onStatusChange((status) => {
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.webContents.send('server-status', status);
+    }
+  });
 
   createTray();
   createWidget();
   registerHotkey();
+
+  // Auto-start servers in background (don't block app launch)
+  serverManager.startAll(store).catch((err) => {
+    console.error('[main] Server auto-start error:', err.message);
+  });
 
   // Check if first launch — trigger model download
   if (store.get('firstLaunch')) {
@@ -71,6 +95,23 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', (e) => {
   // Don't quit — we live in the tray
   e.preventDefault?.();
+});
+
+app.on('before-quit', async (e) => {
+  if (!isQuitting) {
+    isQuitting = true;
+    e.preventDefault();
+
+    console.log('[main] Graceful shutdown — killing servers...');
+    try {
+      await serverManager.shutdown();
+    } catch (err) {
+      console.error('[main] Server shutdown error:', err.message);
+    }
+
+    globalShortcut.unregisterAll();
+    app.quit();
+  }
 });
 
 app.on('will-quit', () => {
@@ -158,6 +199,10 @@ function createTray() {
 
 function updateTrayMenu() {
   const hotkey = store.get('hotkey');
+  const serverStatus = serverManager ? serverManager.getStatus() : { whisper: { status: 'unknown' }, llama: { status: 'unknown' } };
+  const whisperIcon = serverStatus.whisper.status === 'running' ? '🟢' : serverStatus.whisper.status === 'starting' ? '🟡' : '🔴';
+  const llamaIcon = serverStatus.llama.status === 'running' ? '🟢' : serverStatus.llama.status === 'starting' ? '🟡' : '⚪';
+
   const contextMenu = Menu.buildFromTemplate([
     {
       label: isRecording ? '⏹ Stop Recording' : '🎙 Start Recording',
@@ -178,12 +223,25 @@ function updateTrayMenu() {
     },
     { type: 'separator' },
     {
+      label: `${whisperIcon} Whisper Server (${serverStatus.whisper.status})`,
+      enabled: false,
+    },
+    {
+      label: `${llamaIcon} Qwen LLM Server (${serverStatus.llama.status})`,
+      enabled: false,
+    },
+    { type: 'separator' },
+    {
       label: 'Open KrakWhisper',
       click: () => createMainWindow(),
     },
     {
       label: 'Settings',
       click: () => createSettingsWindow(),
+    },
+    {
+      label: 'About KrakWhisper',
+      click: () => showAbout(),
     },
     {
       label: 'Download Models',
@@ -201,6 +259,31 @@ function updateTrayMenu() {
     },
   ]);
   tray.setContextMenu(contextMenu);
+}
+
+// ─── About Dialog ────────────────────────────────────────────────────
+function showAbout() {
+  const serverStatus = serverManager ? serverManager.getStatus() : {};
+  const whisperStatus = serverStatus.whisper ? serverStatus.whisper.status : 'unknown';
+  const llamaStatus = serverStatus.llama ? serverStatus.llama.status : 'unknown';
+
+  dialog.showMessageBox({
+    type: 'info',
+    title: 'About KrakWhisper',
+    message: 'KrakWhisper',
+    detail: [
+      `Version: ${app.getVersion()}`,
+      `Electron: ${process.versions.electron}`,
+      `Node.js: ${process.versions.node}`,
+      '',
+      `Whisper Server: ${whisperStatus} (port 8178)`,
+      `Qwen LLM Server: ${llamaStatus} (port 8179)`,
+      '',
+      'Local voice dictation powered by whisper.cpp',
+      '© 2026 Jeremiah Krakowski',
+    ].join('\n'),
+    buttons: ['OK'],
+  });
 }
 
 // ─── Windows ─────────────────────────────────────────────────────────
@@ -258,9 +341,9 @@ function createSettingsWindow() {
   }
 
   settingsWindow = new BrowserWindow({
-    width: 440,
-    height: 560,
-    resizable: false,
+    width: 500,
+    height: 700,
+    resizable: true,
     title: 'KrakWhisper Settings',
     icon: path.join(__dirname, '..', 'assets', 'tray-icon.png'),
     webPreferences: {
@@ -512,7 +595,9 @@ ipcMain.handle('get-settings', () => {
     hotkey: store.get('hotkey'),
     autoCopy: store.get('autoCopy'),
     autoPaste: store.get('autoPaste'),
+    autoCleanup: store.get('autoCleanup'),
     showNotification: store.get('showNotification'),
+    launchAtStartup: startupManager.isEnabled(),
   };
 });
 
@@ -522,6 +607,7 @@ ipcMain.handle('save-settings', (_event, settings) => {
   if (settings.model) store.set('model', settings.model);
   if (typeof settings.autoCopy === 'boolean') store.set('autoCopy', settings.autoCopy);
   if (typeof settings.autoPaste === 'boolean') store.set('autoPaste', settings.autoPaste);
+  if (typeof settings.autoCleanup === 'boolean') store.set('autoCleanup', settings.autoCleanup);
   if (typeof settings.showNotification === 'boolean') store.set('showNotification', settings.showNotification);
 
   // Handle hotkey change
@@ -585,6 +671,30 @@ ipcMain.handle('delete-model', async (_event, modelName) => {
 ipcMain.handle('copy-to-clipboard', (_event, text) => {
   clipboard.writeText(text);
   return { success: true };
+});
+
+// ─── Server Management IPC ───────────────────────────────────────────
+ipcMain.handle('get-server-status', () => {
+  return serverManager.getStatus();
+});
+
+ipcMain.handle('restart-servers', async () => {
+  try {
+    await serverManager.shutdown();
+    await serverManager.startAll(store);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// ─── Startup Management IPC ─────────────────────────────────────────
+ipcMain.handle('get-startup-enabled', () => {
+  return startupManager.isEnabled();
+});
+
+ipcMain.handle('set-startup-enabled', async (_event, enabled) => {
+  return startupManager.setEnabled(enabled);
 });
 
 // ─── Microphone Selection ────────────────────────────────────────────

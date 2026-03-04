@@ -18,6 +18,19 @@ contextBridge.exposeInMainWorld('krakwhisper', {
   // Clipboard
   copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text),
 
+  // Server management
+  getServerStatus: () => ipcRenderer.invoke('get-server-status'),
+  restartServers: () => ipcRenderer.invoke('restart-servers'),
+
+  // Startup management
+  getStartupEnabled: () => ipcRenderer.invoke('get-startup-enabled'),
+  setStartupEnabled: (enabled) => ipcRenderer.invoke('set-startup-enabled', enabled),
+
+  // Audio devices
+  listAudioDevices: () => ipcRenderer.invoke('list-audio-devices'),
+  getSelectedMic: () => ipcRenderer.invoke('get-selected-mic'),
+  setSelectedMic: (mic) => ipcRenderer.invoke('set-selected-mic', mic),
+
   // Events from main process
   onStateUpdate: (callback) => ipcRenderer.on('state-update', (_e, data) => callback(data)),
   onTranscriptionResult: (callback) => ipcRenderer.on('transcription-result', (_e, text) => callback(text)),
@@ -25,4 +38,5 @@ contextBridge.exposeInMainWorld('krakwhisper', {
   onDownloadProgress: (callback) => ipcRenderer.on('download-progress', (_e, data) => callback(data)),
   onShowSetup: (callback) => ipcRenderer.on('show-setup', () => callback()),
   onError: (callback) => ipcRenderer.on('error', (_e, msg) => callback(msg)),
+  onServerStatus: (callback) => ipcRenderer.on('server-status', (_e, status) => callback(status)),
 });

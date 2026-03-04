@@ -1,7 +1,7 @@
 {
   "name": "krakwhisper-windows",
   "version": "1.0.0",
-  "description": "KrakWhisper \u2014 Local voice dictation for Windows using whisper.cpp",
+  "description": "KrakWhisper — Local voice dictation for Windows using whisper.cpp",
   "main": "src/main.js",
   "author": "Jeremiah Krakowski",
   "license": "MIT",
@@ -46,12 +46,22 @@
     "win": {
       "target": [
         {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
           "target": "nsis",
           "arch": [
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "portable": {
+      "artifactName": "KrakWhisper-${version}-portable.exe"
     },
     "nsis": {
       "oneClick": false,
@@ -59,7 +69,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "KrakWhisper"
+      "shortcutName": "KrakWhisper",
+      "artifactName": "KrakWhisper-${version}-setup.exe"
     }
   }
 }
