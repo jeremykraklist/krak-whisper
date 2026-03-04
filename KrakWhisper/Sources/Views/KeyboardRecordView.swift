@@ -248,22 +248,45 @@ class KeyboardRecordViewModel: ObservableObject {
         }
         
         let start = Date()
+        let timeoutSeconds: UInt64 = 60
         
         do {
             let result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SFSpeechRecognitionResult, Error>) in
                 var hasResumed = false
-                recognizer.recognitionTask(with: request) { result, error in
-                    guard !hasResumed else { return }
+                let lock = NSLock()
+                
+                let task = recognizer.recognitionTask(with: request) { result, error in
+                    lock.lock()
+                    guard !hasResumed else { lock.unlock(); return }
                     if let error {
                         hasResumed = true
+                        lock.unlock()
                         continuation.resume(throwing: error)
                         return
                     }
                     if let result, result.isFinal {
                         hasResumed = true
+                        lock.unlock()
                         continuation.resume(returning: result)
+                        return
                     }
+                    lock.unlock()
                     // Ignore non-final partial results
+                }
+                
+                // Timeout guard: cancel recognition if it stalls beyond the limit
+                Task {
+                    try? await Task.sleep(nanoseconds: timeoutSeconds * 1_000_000_000)
+                    lock.lock()
+                    guard !hasResumed else { lock.unlock(); return }
+                    hasResumed = true
+                    lock.unlock()
+                    task.cancel()
+                    continuation.resume(throwing: NSError(
+                        domain: "com.krakwhisper.sfspeech",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "SFSpeech recognition timed out after \(timeoutSeconds)s"]
+                    ))
                 }
             }
             

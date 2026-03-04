@@ -127,7 +127,7 @@ Even GBoard does NOT record audio directly in the keyboard extension. They use t
 
 ## Implementation Architecture
 
-```
+```text
 ┌─────────────────────┐     URL Scheme      ┌──────────────────────┐
 │  Keyboard Extension │ ──────────────────>  │    Main App          │
 │                     │  krakwhisper://      │                      │

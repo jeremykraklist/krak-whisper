@@ -85,3 +85,4 @@ Cross-platform local speech-to-text app. Replaces Whisper Flow subscription ($8/
 - Separate .xcodeproj from Package.swift (Package.swift includes macOS targets that cause errors)
 - Shell script (`build-testflight.sh`) over Fastlane for TestFlight deployment
 - NLP-based cleanup first, Qwen 3.5 2B replaces it later (Phase 3)
+- **Keyboard IPC (iOS 26):** Replaced broken `openMainApp()` responder-chain hack with `extensionContext?.open(url)` (primary) + SwiftUI `Link` fallback for URL opening. `SFSpeechRecognizer` is the primary transcription engine in `KeyboardRecordView` (on-device, zero model download), with on-device Whisper + Contabo API as fallbacks. App Group + Darwin notification IPC retained for state sharing between keyboard extension and main app. See `docs/keyboard-ipc-research.md`. (PR #47, Issue #42)

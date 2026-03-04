@@ -335,8 +335,9 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: - Mic — Opens Main App (iOS 26 compatible)
     
     /// Invisible SwiftUI Link used as fallback for URL opening when
-    /// extensionContext?.open() fails. Hosted in a UIHostingController.
-    private var linkHostingView: UIView?
+    /// extensionContext?.open() fails. Retains the UIHostingController
+    /// (not just its view) so the SwiftUI Link stays alive for tap handling.
+    private var linkHostingController: UIHostingController<OpenURLLink>?
     
     @objc private func micTapped() {
         guard hasFullAccess else {
@@ -408,13 +409,19 @@ final class KeyboardViewController: UIInputViewController {
     /// the selector-based method. SwiftUI Link uses a different code path
     /// that the system still honors for URL opening.
     private func openMainAppViaLink(_ url: URL) {
-        // Create a temporary SwiftUI Link view and trigger it
+        // Create a temporary SwiftUI Link view and trigger it.
+        // We must retain the UIHostingController (not just its view) so the
+        // SwiftUI Link remains alive when we programmatically tap it.
         let linkView = OpenURLLink(url: url)
         let hosting = UIHostingController(rootView: linkView)
         hosting.view.frame = CGRect(x: -100, y: -100, width: 1, height: 1)
         hosting.view.alpha = 0.01 // Nearly invisible
+        
+        // Proper UIKit container view controller lifecycle
+        addChild(hosting)
         view.addSubview(hosting.view)
-        linkHostingView = hosting.view
+        hosting.didMove(toParent: self)
+        linkHostingController = hosting
         
         // The Link needs to be "tapped" — we trigger via accessibility
         // Give the system a moment to lay out, then trigger
@@ -427,10 +434,12 @@ final class KeyboardViewController: UIInputViewController {
                 self?.openMainAppLegacy(url)
             }
             
-            // Cleanup hosting view after a delay
+            // Cleanup hosting controller after a delay using proper lifecycle
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                self?.linkHostingView?.removeFromSuperview()
-                self?.linkHostingView = nil
+                self?.linkHostingController?.willMove(toParent: nil)
+                self?.linkHostingController?.view.removeFromSuperview()
+                self?.linkHostingController?.removeFromParent()
+                self?.linkHostingController = nil
             }
         }
     }
