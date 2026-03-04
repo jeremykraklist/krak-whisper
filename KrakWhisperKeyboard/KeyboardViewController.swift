@@ -2,11 +2,23 @@
 import UIKit
 import CryptoKit
 
-// MARK: - KrakWhisper QWERTY Keyboard
-// iOS keyboard extensions CANNOT access the microphone directly.
-// Mic button opens the main app (via URL scheme) which records + transcribes.
-// Keyboard receives Darwin notification when result is ready, reads encrypted
-// result from App Group, decrypts, and inserts text.
+// MARK: - KrakWhisper QWERTY Keyboard with Voice Handoff
+//
+// iOS keyboard extensions CANNOT access the microphone (hard Apple sandbox).
+// There is NO way to programmatically open the containing app from a keyboard
+// extension on iOS 26 — tested exhaustively (extensionContext.open returns
+// success but doesn't navigate, UIApplication.shared.open blocked, responder
+// chain openURL: silently fails since iOS 18).
+//
+// Architecture (same pattern as GBoard, SwiftKey, KeyboardKit):
+// 1. Mic button shows instructions to open main app
+// 2. User opens KrakWhisper app manually
+// 3. App detects keyboard intent, auto-records + transcribes
+// 4. Result written to App Group (encrypted)
+// 5. Darwin notification fires
+// 6. Keyboard reads result and auto-inserts text
+//
+// The keyboard is a thin UI shell. All heavy lifting happens in the main app.
 
 final class KeyboardViewController: UIInputViewController {
     
@@ -18,13 +30,16 @@ final class KeyboardViewController: UIInputViewController {
     
     private var keyboardPage: KeyboardPage = .letters
     private var isShifted = true
-    private var pendingTranscription = false
+    private var waitingForResult = false
     
     // UI
     private let containerView = UIView()
     private var keyRows: [UIStackView] = []
     private let statusLabel = UILabel()
     private var micButton: UIButton?
+    
+    // Mic overlay (shown when user taps mic)
+    private var micOverlay: UIView?
     
     private let letterRows = [
         ["q","w","e","r","t","y","u","i","o","p"],
@@ -58,7 +73,6 @@ final class KeyboardViewController: UIInputViewController {
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // Fallback: check if main app left a transcription result for us
         checkForTranscriptionResult()
     }
     
@@ -74,8 +88,6 @@ final class KeyboardViewController: UIInputViewController {
     
     // MARK: - Darwin Notification IPC
     
-    /// Register for Darwin notifications so we get alerted the instant the
-    /// main app finishes transcription — no need to wait for viewDidAppear.
     private func startListeningForTranscription() {
         let center = CFNotificationCenterGetDarwinNotifyCenter()
         CFNotificationCenterAddObserver(
@@ -103,20 +115,18 @@ final class KeyboardViewController: UIInputViewController {
         )
     }
     
-    // MARK: - Check for results from main app (encrypted)
+    // MARK: - Check for results from main app
     
     private func checkForTranscriptionResult() {
         guard let url = sharedURL?.appendingPathComponent(resultFileName),
               FileManager.default.fileExists(atPath: url.path),
               let rawData = try? Data(contentsOf: url) else { return }
         
-        // Decrypt the data (try encrypted first, fall back to plaintext)
         let json: [String: Any]?
         if let decryptedData = try? AppGroupCrypto.decrypt(rawData),
            let decoded = try? JSONSerialization.jsonObject(with: decryptedData) as? [String: Any] {
             json = decoded
         } else if let decoded = try? JSONSerialization.jsonObject(with: rawData) as? [String: Any] {
-            // Fallback: unencrypted data (backwards compatibility)
             json = decoded
         } else {
             return
@@ -127,13 +137,17 @@ final class KeyboardViewController: UIInputViewController {
               let consumed = json["consumed"] as? Bool,
               consumed == false else { return }
         
+        // Dismiss mic overlay if showing
+        dismissMicOverlay()
+        waitingForResult = false
+        
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         
         if !trimmed.isEmpty {
             textDocumentProxy.insertText(trimmed + " ")
             let durationMs = json["durationMs"] as? Int ?? 0
             let dur = String(format: "%.1fs", Double(durationMs) / 1000)
-            statusLabel.text = "\u{2713} Whisper \u{00B7} \(dur)"
+            statusLabel.text = "\u{2713} Inserted \u{00B7} \(dur)"
             statusLabel.textColor = .systemGreen
         } else if let error = json["error"] as? String, !error.isEmpty {
             statusLabel.text = "\u{26A0}\u{FE0F} \(error)"
@@ -143,19 +157,17 @@ final class KeyboardViewController: UIInputViewController {
             statusLabel.textColor = .systemOrange
         }
         
-        // Mark as consumed so we don't insert twice (re-encrypt)
+        // Mark as consumed
         var updated = json
         updated["consumed"] = true
         if let updatedData = try? JSONSerialization.data(withJSONObject: updated),
            let encrypted = try? AppGroupCrypto.encrypt(updatedData) {
             try? encrypted.write(to: url)
         } else if let updatedData = try? JSONSerialization.data(withJSONObject: updated) {
-            // Fallback: write unencrypted
             try? updatedData.write(to: url)
         }
         
-        // Reset status after delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
             self?.statusLabel.text = "KrakWhisper"
             self?.statusLabel.textColor = .secondaryLabel
         }
@@ -253,7 +265,7 @@ final class KeyboardViewController: UIInputViewController {
         
         let mic = UIButton(type: .system)
         mic.setImage(UIImage(systemName: "mic.fill"), for: .normal)
-        mic.backgroundColor = .systemGray3; mic.tintColor = .label; mic.layer.cornerRadius = 5
+        mic.backgroundColor = .systemTeal; mic.tintColor = .white; mic.layer.cornerRadius = 5
         mic.widthAnchor.constraint(equalToConstant: 40).isActive = true
         mic.addTarget(self, action: #selector(micTapped), for: .touchUpInside)
         bot.addArrangedSubview(mic)
@@ -326,12 +338,22 @@ final class KeyboardViewController: UIInputViewController {
         keyboardPage = (keyboardPage == .numbers) ? .symbols : .numbers; buildKeyRows()
     }
     
-    // MARK: - Mic — Opens Main App (iOS 26 modern URL scheme)
+    // MARK: - Mic Button — Voice Handoff
     
     @objc private func micTapped() {
+        if waitingForResult {
+            // Already waiting — check for result
+            checkForTranscriptionResult()
+            return
+        }
+        
         guard hasFullAccess else {
             statusLabel.text = "\u{26A0}\u{FE0F} Enable Full Access in Settings"
             statusLabel.textColor = .systemRed
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                self?.statusLabel.text = "KrakWhisper"
+                self?.statusLabel.textColor = .secondaryLabel
+            }
             return
         }
         
@@ -340,120 +362,158 @@ final class KeyboardViewController: UIInputViewController {
             try? FileManager.default.removeItem(at: url)
         }
         
-        // Write intent so main app knows to start recording immediately
+        // Write intent so main app auto-records on launch
         if let intentURL = sharedURL?.appendingPathComponent("keyboard-intent.json") {
-            let intent: [String: Any] = ["action": "record", "timestamp": Date().timeIntervalSince1970]
+            let intent: [String: Any] = [
+                "action": "record",
+                "timestamp": Date().timeIntervalSince1970,
+                "source": "keyboard"
+            ]
             if let data = try? JSONSerialization.data(withJSONObject: intent) {
                 try? data.write(to: intentURL)
             }
         }
         
-        statusLabel.text = "\u{1F3A4} Opening KrakWhisper..."
-        statusLabel.textColor = .systemBlue
-        
-        openMainApp()
+        waitingForResult = true
+        showMicOverlay()
     }
     
-    // MARK: - Debug Logging
+    // MARK: - Mic Overlay UI
     
-    private func logToAppGroup(_ message: String) {
-        guard let url = sharedURL?.appendingPathComponent("keyboard-debug.log") else { return }
-        let ts = ISO8601DateFormatter().string(from: Date())
-        let entry = "[\(ts)] \(message)\n"
-        if let handle = try? FileHandle(forWritingTo: url) {
-            handle.seekToEndOfFile()
-            if let data = entry.data(using: .utf8) { handle.write(data) }
-            handle.closeFile()
-        } else {
-            try? entry.write(to: url, atomically: true, encoding: .utf8)
+    private func showMicOverlay() {
+        // Show overlay on top of keys with instructions
+        let overlay = UIView()
+        overlay.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.95)
+        overlay.layer.cornerRadius = 12
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(overlay)
+        
+        NSLayoutConstraint.activate([
+            overlay.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 4),
+            overlay.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
+            overlay.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8),
+            overlay.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -8),
+        ])
+        
+        // Mic icon
+        let micIcon = UIImageView(image: UIImage(systemName: "mic.circle.fill"))
+        micIcon.tintColor = .systemTeal
+        micIcon.contentMode = .scaleAspectFit
+        micIcon.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(micIcon)
+        
+        // Title
+        let title = UILabel()
+        title.text = "Voice Recording"
+        title.font = .systemFont(ofSize: 17, weight: .semibold)
+        title.textColor = .label
+        title.textAlignment = .center
+        title.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(title)
+        
+        // Instructions
+        let instructions = UILabel()
+        instructions.text = "Open the KrakWhisper app to record.\nYour transcription will appear here automatically."
+        instructions.font = .systemFont(ofSize: 13)
+        instructions.textColor = .secondaryLabel
+        instructions.textAlignment = .center
+        instructions.numberOfLines = 0
+        instructions.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(instructions)
+        
+        // Waiting indicator
+        let waitLabel = UILabel()
+        waitLabel.text = "\u{23F3} Waiting for transcription..."
+        waitLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        waitLabel.textColor = .systemTeal
+        waitLabel.textAlignment = .center
+        waitLabel.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(waitLabel)
+        
+        // Cancel button
+        let cancel = UIButton(type: .system)
+        cancel.setTitle("Cancel", for: .normal)
+        cancel.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
+        cancel.setTitleColor(.systemGray, for: .normal)
+        cancel.addTarget(self, action: #selector(cancelMicOverlay), for: .touchUpInside)
+        cancel.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(cancel)
+        
+        NSLayoutConstraint.activate([
+            micIcon.topAnchor.constraint(equalTo: overlay.topAnchor, constant: 16),
+            micIcon.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+            micIcon.widthAnchor.constraint(equalToConstant: 44),
+            micIcon.heightAnchor.constraint(equalToConstant: 44),
+            
+            title.topAnchor.constraint(equalTo: micIcon.bottomAnchor, constant: 8),
+            title.leadingAnchor.constraint(equalTo: overlay.leadingAnchor, constant: 16),
+            title.trailingAnchor.constraint(equalTo: overlay.trailingAnchor, constant: -16),
+            
+            instructions.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 6),
+            instructions.leadingAnchor.constraint(equalTo: overlay.leadingAnchor, constant: 20),
+            instructions.trailingAnchor.constraint(equalTo: overlay.trailingAnchor, constant: -20),
+            
+            waitLabel.topAnchor.constraint(equalTo: instructions.bottomAnchor, constant: 12),
+            waitLabel.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+            
+            cancel.bottomAnchor.constraint(equalTo: overlay.bottomAnchor, constant: -8),
+            cancel.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+        ])
+        
+        // Animate in
+        overlay.alpha = 0
+        UIView.animate(withDuration: 0.2) { overlay.alpha = 1 }
+        
+        micOverlay = overlay
+        statusLabel.text = "\u{1F3A4} Open KrakWhisper app to record"
+        statusLabel.textColor = .systemTeal
+    }
+    
+    @objc private func cancelMicOverlay() {
+        dismissMicOverlay()
+        waitingForResult = false
+        statusLabel.text = "KrakWhisper"
+        statusLabel.textColor = .secondaryLabel
+        
+        // Clean up intent
+        if let intentURL = sharedURL?.appendingPathComponent("keyboard-intent.json") {
+            try? FileManager.default.removeItem(at: intentURL)
         }
     }
     
-    /// Open main app via URL scheme — 3-tier strategy.
-    /// Tier 1: extensionContext?.open(url) — official NSExtensionContext API
-    /// Tier 2: UIApplication via NSClassFromString (indirect access)
-    /// Tier 3: Responder chain openURL: (legacy, broken on iOS 26)
-    private func openMainApp() {
-        guard let url = URL(string: "krakwhisper://record") else {
-            statusLabel.text = "\u{26A0}\u{FE0F} Invalid URL"
-            return
-        }
-        
-        // ============================================================
-        // TIER 1: extensionContext?.open(url)
-        // Official NSExtensionContext API. Research says this only works
-        // for Today widgets, but let's verify on iOS 26.3.
-        // ============================================================
-        if let context = extensionContext {
-            logToAppGroup("TIER 1: Trying extensionContext.open(\(url))")
-            context.open(url) { [weak self] success in
-                DispatchQueue.main.async {
-                    if success {
-                        self?.logToAppGroup("TIER 1: extensionContext.open SUCCESS ✅")
-                        self?.statusLabel.text = "\u{1F3A4} Recording..."
-                        self?.statusLabel.textColor = .systemGreen
-                    } else {
-                        self?.logToAppGroup("TIER 1: extensionContext.open FAILED ❌")
-                        self?.tryTier2(url)
-                    }
-                }
+    private func dismissMicOverlay() {
+        if let overlay = micOverlay {
+            UIView.animate(withDuration: 0.15, animations: {
+                overlay.alpha = 0
+            }) { _ in
+                overlay.removeFromSuperview()
             }
-            return
+            micOverlay = nil
         }
-        
-        logToAppGroup("TIER 1: No extensionContext available")
-        tryTier2(url)
+    }
+}
+
+// MARK: - App Group Encryption (shared with main app)
+
+enum AppGroupCrypto {
+    private static let keyData = Data("KrakWhisperSharedKey2026!".utf8)
+    
+    private static var symmetricKey: SymmetricKey {
+        let hash = SHA256.hash(data: keyData)
+        return SymmetricKey(data: hash)
     }
     
-    /// Tier 2: UIApplication.shared.open via NSClassFromString
-    private func tryTier2(_ url: URL) {
-        logToAppGroup("TIER 2: Trying UIApplication.shared.open via NSClassFromString")
-        
-        // Access UIApplication indirectly (extensions don't have direct access)
-        if let appClass = NSClassFromString("UIApplication") as? NSObject.Type,
-           let app = appClass.perform(NSSelectorFromString("sharedApplication"))?.takeUnretainedValue() {
-            let openSel = NSSelectorFromString("openURL:options:completionHandler:")
-            if app.responds(to: openSel) {
-                // Use performSelector with just the URL (2-arg version)
-                let simpleSel = NSSelectorFromString("openURL:")
-                if app.responds(to: simpleSel) {
-                    app.perform(simpleSel, with: url)
-                    logToAppGroup("TIER 2: UIApplication.openURL: called ✅")
-                    statusLabel.text = "\u{1F3A4} Recording..."
-                    statusLabel.textColor = .systemGreen
-                    return
-                }
-            }
+    static func encrypt(_ data: Data) throws -> Data {
+        let sealedBox = try AES.GCM.seal(data, using: symmetricKey)
+        guard let combined = sealedBox.combined else {
+            throw NSError(domain: "AppGroupCrypto", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to combine sealed box"])
         }
-        
-        logToAppGroup("TIER 2: UIApplication approach FAILED ❌")
-        tryTier3(url)
+        return combined
     }
     
-    /// Tier 3: Legacy responder chain (broken on iOS 26 but try anyway)
-    private func tryTier3(_ url: URL) {
-        logToAppGroup("TIER 3: Trying responder chain openURL:")
-        
-        var responder: UIResponder? = self as UIResponder
-        let selector = NSSelectorFromString("openURL:")
-        while let r = responder {
-            if r.responds(to: selector) {
-                r.perform(selector, with: url)
-                logToAppGroup("TIER 3: Responder chain openURL: fired (may silently fail)")
-                return
-            }
-            responder = r.next
-        }
-        
-        logToAppGroup("ALL TIERS FAILED ❌ — no way to open containing app")
-        statusLabel.text = "\u{26A0}\u{FE0F} Open KrakWhisper app manually"
-        statusLabel.textColor = .systemOrange
-        
-        // Auto-reset after 5 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-            self?.statusLabel.text = "KrakWhisper"
-            self?.statusLabel.textColor = .secondaryLabel
-        }
+    static func decrypt(_ data: Data) throws -> Data {
+        let sealedBox = try AES.GCM.SealedBox(combined: data)
+        return try AES.GCM.open(sealedBox, using: symmetricKey)
     }
 }
 #endif
