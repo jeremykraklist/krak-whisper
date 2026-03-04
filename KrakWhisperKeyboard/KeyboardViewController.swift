@@ -493,27 +493,4 @@ final class KeyboardViewController: UIInputViewController {
     }
 }
 
-// MARK: - App Group Encryption (shared with main app)
-
-enum AppGroupCrypto {
-    private static let keyData = Data("KrakWhisperSharedKey2026!".utf8)
-    
-    private static var symmetricKey: SymmetricKey {
-        let hash = SHA256.hash(data: keyData)
-        return SymmetricKey(data: hash)
-    }
-    
-    static func encrypt(_ data: Data) throws -> Data {
-        let sealedBox = try AES.GCM.seal(data, using: symmetricKey)
-        guard let combined = sealedBox.combined else {
-            throw NSError(domain: "AppGroupCrypto", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to combine sealed box"])
-        }
-        return combined
-    }
-    
-    static func decrypt(_ data: Data) throws -> Data {
-        let sealedBox = try AES.GCM.SealedBox(combined: data)
-        return try AES.GCM.open(sealedBox, using: symmetricKey)
-    }
-}
 #endif
