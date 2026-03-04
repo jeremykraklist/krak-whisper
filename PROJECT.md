@@ -37,18 +37,20 @@ Cross-platform local speech-to-text app. Replaces Whisper Flow subscription ($8/
 | Phase | Scope | Status |
 |-------|-------|--------|
 | Phase 1 | iOS MVP — record + transcribe + model download | ✅ Complete |
-| Phase 2 | iOS polish — keyboard, AI cleanup, share, tags | 🔨 In progress |
-| Phase 3 | On-device LLM (Qwen 3.5 2B) for text cleanup | 🔲 Not started |
-| Phase 4 | Windows Electron port with CUDA | 🔲 Building env |
-| Phase 5 | macOS menu bar app with global hotkey | 🔲 Not started |
+| Phase 2 | iOS polish — keyboard, AI cleanup, share, tags | ✅ Complete (keyboard voice handoff working) |
+| Phase 3 | On-device LLM (Qwen 3.5 2B) for text cleanup | 🔨 In progress (macOS/Windows done, iOS dispatched) |
+| Phase 4 | Windows Electron port with CUDA | ✅ Complete (RTX 3080 GPU, 457ms transcription) |
+| Phase 5 | macOS menu bar app with global hotkey | ✅ Complete (⌘⇧W, floating widget, Qwen cleanup) |
+| Phase 6 | Production packaging all 3 platforms | 🔨 In progress |
 
-## Phase 2 Issues (Current Sprint)
-| Issue | Title | Status |
-|-------|-------|--------|
-| #19 | Keyboard Extension — system-wide dictation | ⚠️ Compiles but model loading broken (needs App Group) |
-| #22 | Tags, titles, organization | 🔲 Not dispatched |
-| #23 | Fastlane automated build | ✅ Done (shell script, not Fastlane) |
-| #26 | On-device LLM with Qwen 3.5 2B | 🔲 Phase 3 |
+## Current Sprint (Factory Run)
+| Issue | Title | Agent | Status |
+|-------|-------|-------|--------|
+| #48 | iOS: On-device Qwen 3.5 LLM cleanup | Ops | 🔨 In progress |
+| #49 | macOS: DMG installer, auto-start, app icon | Dev Alpha | 🔨 In progress |
+| #50 | Windows: Installer, auto-start, settings UI | Dev Beta | 🔨 In progress |
+| #51 | iOS: Recording UI polish (Whisper Flow style) | Anton | ✅ Done (Build 36) |
+| #22 | Tags, titles, organization | — | 🔲 Not dispatched |
 
 ## What's Deployed
 - **TestFlight:** Latest build uploaded 2026-03-03 with:
