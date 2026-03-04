@@ -355,12 +355,20 @@ final class KeyboardViewController: UIInputViewController {
     }
     
     /// Open main app via URL scheme.
-    /// Keyboard extensions can't access UIApplication.shared directly,
-    /// so we walk the responder chain to find the hidden UIApplication instance.
+    /// Uses NSClassFromString to access UIApplication.shared indirectly
+    /// (keyboard extensions don't have direct UIApplication access).
+    /// Open main app via URL scheme.
+    /// ONLY use single-param openURL: via responder chain.
+    /// The 3-param openURL:options:completionHandler: CRASHES when called
+    /// via perform:with:with: (can not pass 3 args). Proven in builds 16-24.
+    /// NOTE: iOS will dismiss the custom keyboard when opening a URL.
     private func openMainApp() {
-        guard let url = URL(string: "krakwhisper://record") else { return }
+        guard let url = URL(string: "krakwhisper://record") else {
+            statusLabel.text = "\u{26A0}\u{FE0F} Invalid URL"
+            return
+        }
         
-        // Walk responder chain to find the hidden UIApplication
+        // Responder chain with single-param openURL: (proven working)
         var responder: UIResponder? = self as UIResponder
         let selector = NSSelectorFromString("openURL:")
         while let r = responder {
@@ -370,6 +378,9 @@ final class KeyboardViewController: UIInputViewController {
             }
             responder = r.next
         }
+        
+        statusLabel.text = "\u{26A0}\u{FE0F} Could not open app"
+        statusLabel.textColor = .systemRed
     }
 }
 #endif
