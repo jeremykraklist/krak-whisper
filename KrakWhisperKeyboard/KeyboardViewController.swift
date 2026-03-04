@@ -157,9 +157,10 @@ final class KeyboardViewController: UIInputViewController {
               let consumed = json["consumed"] as? Bool,
               consumed == false else { return }
         
-        // Dismiss mic overlay and reset state
+        // Reset mic state fully
         dismissMicOverlay()
         waitingForResult = false
+        backgroundConfirmed = false
         micButton?.backgroundColor = .systemTeal
         micButton?.setImage(UIImage(systemName: "mic.fill"), for: .normal)
         
@@ -360,7 +361,9 @@ final class KeyboardViewController: UIInputViewController {
         keyboardPage = (keyboardPage == .numbers) ? .symbols : .numbers; buildKeyRows()
     }
     
-    // MARK: - Mic Button — Background Recording via Darwin IPC
+    // MARK: - Mic Button — Hybrid: Background IPC → Fallback to App Handoff
+    
+    private var backgroundConfirmed = false
     
     @objc private func micTapped() {
         guard hasFullAccess else {
@@ -373,26 +376,47 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         
-        if waitingForResult {
-            // Already recording — send stop signal
+        if waitingForResult && backgroundConfirmed {
+            // Recording in background — send stop signal
             CFNotificationCenterPostNotification(
                 CFNotificationCenterGetDarwinNotifyCenter(),
                 CFNotificationName("com.krakwhisper.stopRecording" as CFString),
                 nil, nil, true
             )
-            statusLabel.text = "\u{23F3} Stopping..."
-            statusLabel.textColor = .systemOrange
+            statusLabel.text = "\u{23F3} Transcribing..."
+            statusLabel.textColor = .systemBlue
             return
         }
+        
+        if waitingForResult && !backgroundConfirmed {
+            // Already in fallback mode, check for result
+            checkForTranscriptionResult()
+            return
+        }
+        
+        // --- Start new recording ---
         
         // Clear any old result
         if let url = sharedURL?.appendingPathComponent(resultFileName) {
             try? FileManager.default.removeItem(at: url)
         }
         
-        waitingForResult = true
+        // Always write keyboard intent (for app handoff fallback)
+        if let intentURL = sharedURL?.appendingPathComponent("keyboard-intent.json") {
+            let intent: [String: Any] = [
+                "action": "record",
+                "timestamp": Date().timeIntervalSince1970,
+                "source": "keyboard"
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: intent) {
+                try? data.write(to: intentURL)
+            }
+        }
         
-        // Send Darwin notification to main app (running in background)
+        waitingForResult = true
+        backgroundConfirmed = false
+        
+        // Try background IPC first
         CFNotificationCenterPostNotification(
             CFNotificationCenterGetDarwinNotifyCenter(),
             CFNotificationName("com.krakwhisper.startRecording" as CFString),
@@ -401,110 +425,57 @@ final class KeyboardViewController: UIInputViewController {
         
         statusLabel.text = "\u{1F3A4} Starting..."
         statusLabel.textColor = .systemTeal
-        
-        // Update mic button to show recording state
         micButton?.backgroundColor = .systemRed
         micButton?.setImage(UIImage(systemName: "stop.fill"), for: .normal)
         
-        // If main app doesn't respond within 3 seconds, show fallback
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-            guard let self, self.waitingForResult,
-                  self.statusLabel.text == "\u{1F3A4} Starting..." else { return }
-            // Main app not running — show fallback overlay
-            self.showFallbackOverlay()
+        // If background doesn't confirm in 1.5s, show app handoff message
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self, self.waitingForResult, !self.backgroundConfirmed else { return }
+            self.showAppHandoffMessage()
         }
     }
     
-    /// Called when main app confirms recording has started
+    /// Called when main app confirms recording has started in background
     func onRecordingStarted() {
+        backgroundConfirmed = true
+        dismissMicOverlay()
         statusLabel.text = "\u{1F3A4} Recording... tap mic to stop"
         statusLabel.textColor = .systemRed
-        
         micButton?.backgroundColor = .systemRed
         micButton?.setImage(UIImage(systemName: "stop.fill"), for: .normal)
     }
     
-    // MARK: - Fallback UI (when main app is not running)
+    // MARK: - App Handoff (fallback when background IPC fails)
     
-    private func showFallbackOverlay() {
-        let overlay = UIView()
-        overlay.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.95)
-        overlay.layer.cornerRadius = 12
-        overlay.translatesAutoresizingMaskIntoConstraints = false
-        containerView.addSubview(overlay)
+    private func showAppHandoffMessage() {
+        // Show compact inline message — not a big overlay
+        statusLabel.text = "\u{1F4F1} Open KrakWhisper → record → come back"
+        statusLabel.textColor = .systemOrange
         
-        NSLayoutConstraint.activate([
-            overlay.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 4),
-            overlay.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
-            overlay.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8),
-            overlay.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -8),
-        ])
+        // The keyboard intent file is already written,
+        // so when user opens the app it will auto-record.
+        // When they come back, Darwin notification + viewWillAppear
+        // will pick up the result and auto-insert.
         
-        let micIcon = UIImageView(image: UIImage(systemName: "mic.circle.fill"))
-        micIcon.tintColor = .systemTeal
-        micIcon.contentMode = .scaleAspectFit
-        micIcon.translatesAutoresizingMaskIntoConstraints = false
-        overlay.addSubview(micIcon)
-        
-        let title = UILabel()
-        title.text = "Open KrakWhisper First"
-        title.font = .systemFont(ofSize: 17, weight: .semibold)
-        title.textColor = .label
-        title.textAlignment = .center
-        title.translatesAutoresizingMaskIntoConstraints = false
-        overlay.addSubview(title)
-        
-        let instructions = UILabel()
-        instructions.text = "Open KrakWhisper app once, then come back.\nIt will record in the background via Dynamic Island."
-        instructions.font = .systemFont(ofSize: 13)
-        instructions.textColor = .secondaryLabel
-        instructions.textAlignment = .center
-        instructions.numberOfLines = 0
-        instructions.translatesAutoresizingMaskIntoConstraints = false
-        overlay.addSubview(instructions)
-        
-        let cancel = UIButton(type: .system)
-        cancel.setTitle("OK", for: .normal)
-        cancel.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
-        cancel.setTitleColor(.systemTeal, for: .normal)
-        cancel.addTarget(self, action: #selector(dismissFallback), for: .touchUpInside)
-        cancel.translatesAutoresizingMaskIntoConstraints = false
-        overlay.addSubview(cancel)
-        
-        NSLayoutConstraint.activate([
-            micIcon.topAnchor.constraint(equalTo: overlay.topAnchor, constant: 20),
-            micIcon.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
-            micIcon.widthAnchor.constraint(equalToConstant: 44),
-            micIcon.heightAnchor.constraint(equalToConstant: 44),
-            
-            title.topAnchor.constraint(equalTo: micIcon.bottomAnchor, constant: 10),
-            title.leadingAnchor.constraint(equalTo: overlay.leadingAnchor, constant: 16),
-            title.trailingAnchor.constraint(equalTo: overlay.trailingAnchor, constant: -16),
-            
-            instructions.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 8),
-            instructions.leadingAnchor.constraint(equalTo: overlay.leadingAnchor, constant: 20),
-            instructions.trailingAnchor.constraint(equalTo: overlay.trailingAnchor, constant: -20),
-            
-            cancel.bottomAnchor.constraint(equalTo: overlay.bottomAnchor, constant: -12),
-            cancel.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
-        ])
-        
-        overlay.alpha = 0
-        UIView.animate(withDuration: 0.2) { overlay.alpha = 1 }
-        micOverlay = overlay
-    }
-    
-    @objc private func dismissFallback() {
-        dismissMicOverlay()
-        resetMicState()
+        // Auto-reset after 15 seconds if no result
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+            guard let self, self.waitingForResult, !self.backgroundConfirmed else { return }
+            self.resetMicState()
+        }
     }
     
     private func resetMicState() {
         waitingForResult = false
+        backgroundConfirmed = false
         statusLabel.text = "KrakWhisper"
         statusLabel.textColor = .secondaryLabel
         micButton?.backgroundColor = .systemTeal
         micButton?.setImage(UIImage(systemName: "mic.fill"), for: .normal)
+        
+        // Clean up intent
+        if let intentURL = sharedURL?.appendingPathComponent("keyboard-intent.json") {
+            try? FileManager.default.removeItem(at: intentURL)
+        }
     }
     
     private func dismissMicOverlay() {
