@@ -10,7 +10,7 @@
     .settings-form {
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 16px;
     }
 
     .form-group {
@@ -65,6 +65,80 @@
       font-weight: normal;
     }
 
+    .section-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-top: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .server-status-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+    }
+
+    .server-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 0;
+    }
+
+    .server-row + .server-row {
+      border-top: 1px solid var(--border);
+    }
+
+    .server-name {
+      font-size: 0.85rem;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .server-badge {
+      font-size: 0.75rem;
+      padding: 2px 10px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+
+    .server-badge.running {
+      background: rgba(78, 204, 163, 0.15);
+      color: var(--accent);
+    }
+
+    .server-badge.starting {
+      background: rgba(241, 196, 15, 0.15);
+      color: #f1c40f;
+    }
+
+    .server-badge.stopped {
+      background: rgba(160, 160, 176, 0.1);
+      color: var(--text-secondary);
+    }
+
+    .server-badge.error {
+      background: rgba(231, 76, 60, 0.15);
+      color: var(--danger);
+    }
+
+    .server-error-text {
+      font-size: 0.75rem;
+      color: var(--danger);
+      margin-top: 2px;
+    }
+
+    .server-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 8px;
+    }
+
     .save-section {
       display: flex;
       justify-content: flex-end;
@@ -77,6 +151,12 @@
       color: var(--accent);
       align-self: center;
     }
+
+    .description {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      margin: 0;
+    }
   </style>
 </head>
 <body>
@@ -87,6 +167,26 @@
 
     <div class="panel">
       <form class="settings-form" id="settings-form">
+        <!-- Server Status -->
+        <div class="section-title">Server Status</div>
+        <div class="server-status-panel" id="server-panel">
+          <div class="server-row">
+            <span class="server-name">🎤 Whisper Server (8178)</span>
+            <span class="server-badge stopped" id="whisper-status">checking...</span>
+          </div>
+          <div id="whisper-error" class="server-error-text" style="display: none;"></div>
+          <div class="server-row">
+            <span class="server-name">🧠 Qwen LLM Server (8179)</span>
+            <span class="server-badge stopped" id="llama-status">checking...</span>
+          </div>
+          <div id="llama-error" class="server-error-text" style="display: none;"></div>
+          <div class="server-actions">
+            <button type="button" class="btn btn-secondary" id="restart-servers-btn" style="font-size: 0.8rem; padding: 6px 12px;">🔄 Restart Servers</button>
+          </div>
+        </div>
+
+        <!-- Transcription -->
+        <div class="section-title">Transcription</div>
         <div class="form-group">
           <label for="model-select">Whisper Model</label>
           <select id="model-select">
@@ -100,9 +200,11 @@
         <div class="form-group">
           <label for="hotkey-input">Global Hotkey</label>
           <input type="text" id="hotkey-input" placeholder="e.g. CommandOrControl+Shift+W" readonly>
-          <p class="description" style="margin: 0;">Click and press your desired key combination</p>
+          <p class="description">Click and press your desired key combination</p>
         </div>
 
+        <!-- Behavior -->
+        <div class="section-title">Behavior</div>
         <div class="form-group">
           <div class="checkbox-group">
             <input type="checkbox" id="auto-copy" checked>
@@ -119,9 +221,27 @@
 
         <div class="form-group">
           <div class="checkbox-group">
+            <input type="checkbox" id="auto-cleanup">
+            <label for="auto-cleanup">AI text cleanup (Qwen LLM)</label>
+          </div>
+          <p class="description">Clean up filler words and fix grammar using the local Qwen model before pasting</p>
+        </div>
+
+        <div class="form-group">
+          <div class="checkbox-group">
             <input type="checkbox" id="show-notification" checked>
             <label for="show-notification">Show notification after transcription</label>
           </div>
+        </div>
+
+        <!-- System -->
+        <div class="section-title">System</div>
+        <div class="form-group">
+          <div class="checkbox-group">
+            <input type="checkbox" id="launch-at-startup">
+            <label for="launch-at-startup">Launch KrakWhisper at Windows startup</label>
+          </div>
+          <p class="description">Adds a shortcut to the Windows Startup folder</p>
         </div>
 
         <div class="save-section">
