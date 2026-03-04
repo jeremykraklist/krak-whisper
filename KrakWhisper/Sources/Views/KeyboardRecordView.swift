@@ -96,12 +96,25 @@ struct KeyboardRecordView: View {
         }
         .onChange(of: recorder.isDone) { _, done in
             if done {
-                // Auto-dismiss after showing result briefly
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                // Auto-dismiss and return to previous app
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                     dismiss()
+                    // Background the app to return user to their previous app
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        Self.suspendApp()
+                    }
                 }
             }
         }
+    }
+    
+    /// Suspend the app to return user to their previous app.
+    /// Uses the documented UIControl.sendAction technique.
+    private static func suspendApp() {
+        // This sends the app to the background, returning the user
+        // to whatever app they were using before.
+        let selector = NSSelectorFromString("suspend")
+        UIApplication.shared.perform(selector)
     }
 }
 
