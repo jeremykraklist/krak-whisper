@@ -9,6 +9,7 @@ import KrakWhisper
 /// - Shows/hides the popover on click
 /// - Registers the global hotkey for dictation
 /// - Coordinates the DictationViewModel lifecycle
+/// - Auto-starts llama-server for Qwen text cleanup
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
@@ -16,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     let dictationViewModel = DictationViewModel()
     private let hotkeyManager = HotkeyManager()
+    private let llamaServerManager = LlamaServerManager()
     private var statusBarController: StatusBarController!
 
     // MARK: - NSApplicationDelegate
@@ -44,11 +46,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             await dictationViewModel.loadSelectedModel()
         }
 
+        // Auto-start llama-server for Qwen text cleanup
+        llamaServerManager.startIfNeeded()
+
         // Check accessibility permissions (needed for paste-to-app)
         PasteService.requestAccessibilityIfNeeded()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         hotkeyManager.unregister()
+
+        // Graceful shutdown: kill llama-server if we started it
+        llamaServerManager.stop()
     }
 }
