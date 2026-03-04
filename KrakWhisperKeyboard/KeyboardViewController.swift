@@ -416,23 +416,21 @@ final class KeyboardViewController: UIInputViewController {
         waitingForResult = true
         backgroundConfirmed = false
         
-        // Try background IPC first
+        // Send Darwin notification (in case app is in background)
         CFNotificationCenterPostNotification(
             CFNotificationCenterGetDarwinNotifyCenter(),
             CFNotificationName("com.krakwhisper.startRecording" as CFString),
             nil, nil, true
         )
         
-        statusLabel.text = "\u{1F3A4} Starting..."
+        statusLabel.text = "\u{1F3A4} Opening app..."
         statusLabel.textColor = .systemTeal
         micButton?.backgroundColor = .systemRed
         micButton?.setImage(UIImage(systemName: "stop.fill"), for: .normal)
         
-        // If background doesn't confirm in 1.5s, show app handoff message
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            guard let self, self.waitingForResult, !self.backgroundConfirmed else { return }
-            self.showAppHandoffMessage()
-        }
+        // Open the app immediately — don't wait for Darwin IPC
+        // The intent file is already written, app will auto-record on open
+        openContainingApp()
     }
     
     /// Called when main app confirms recording has started in background
@@ -451,22 +449,64 @@ final class KeyboardViewController: UIInputViewController {
         statusLabel.text = "\u{1F3A4} Opening app..."
         statusLabel.textColor = .systemTeal
         
-        // Try to open the app automatically via extensionContext
-        // This returns "success" on iOS 26 even if unreliable — worth trying
-        if let url = URL(string: "krakwhisper://record"),
-           let context = extensionContext {
+        openContainingApp()
+    }
+    
+    /// Try multiple methods to open the containing app.
+    /// iOS 26 broke most approaches, but we try them all in sequence.
+    private func openContainingApp() {
+        guard let url = URL(string: "krakwhisper://record") else {
+            showManualOpenMessage()
+            return
+        }
+        
+        // Method 1: extensionContext.open (standard API)
+        if let context = extensionContext {
             context.open(url) { [weak self] success in
                 DispatchQueue.main.async {
                     if !success {
-                        self?.statusLabel.text = "\u{1F4F1} Open KrakWhisper → record → come back"
-                        self?.statusLabel.textColor = .systemOrange
+                        self?.tryResponderChainOpen(url: url)
+                    }
+                    // If success=true, iOS 26 may still not navigate.
+                    // We'll show manual fallback after a short delay.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        // Still here? App didn't open.
+                        if self?.waitingForResult == true, self?.backgroundConfirmed == false {
+                            self?.tryResponderChainOpen(url: url)
+                        }
                     }
                 }
             }
         } else {
-            statusLabel.text = "\u{1F4F1} Open KrakWhisper → record → come back"
-            statusLabel.textColor = .systemOrange
+            tryResponderChainOpen(url: url)
         }
+    }
+    
+    /// Method 2: Walk the responder chain to find a URL opener.
+    /// This works on some iOS versions where extensionContext.open doesn't.
+    private func tryResponderChainOpen(url: URL) {
+        var responder: UIResponder? = self
+        let selector = sel_registerName("openURL:")
+        while let r = responder {
+            if r.responds(to: selector) {
+                r.perform(selector, with: url)
+                // Give it a moment to take effect
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                    if self?.waitingForResult == true, self?.backgroundConfirmed == false {
+                        self?.showManualOpenMessage()
+                    }
+                }
+                return
+            }
+            responder = r.next
+        }
+        showManualOpenMessage()
+    }
+    
+    private func showManualOpenMessage() {
+        statusLabel.text = "\u{1F4F1} Open KrakWhisper → record → come back"
+        statusLabel.textColor = .systemOrange
+    }
         
         // The keyboard intent file is already written,
         // so when user opens the app it will auto-record.
