@@ -43,7 +43,10 @@
     <key>UIBackgroundModes</key>
     <array>
         <string>processing</string>
+        <string>audio</string>
     </array>
+    <key>NSSupportsLiveActivities</key>
+    <true/>
     <key>BGTaskSchedulerPermittedIdentifiers</key>
     <array>
         <string>com.krakwhisper.model-download</string>

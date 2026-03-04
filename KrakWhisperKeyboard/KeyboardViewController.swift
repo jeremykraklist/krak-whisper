@@ -90,6 +90,8 @@ final class KeyboardViewController: UIInputViewController {
     
     private func startListeningForTranscription() {
         let center = CFNotificationCenterGetDarwinNotifyCenter()
+        
+        // Listen for transcription result
         CFNotificationCenterAddObserver(
             center,
             Unmanaged.passUnretained(self).toOpaque(),
@@ -103,6 +105,24 @@ final class KeyboardViewController: UIInputViewController {
                 }
             },
             "com.krakwhisper.transcriptionReady" as CFString,
+            nil,
+            .deliverImmediately
+        )
+        
+        // Listen for recording started confirmation from main app
+        CFNotificationCenterAddObserver(
+            center,
+            Unmanaged.passUnretained(self).toOpaque(),
+            { (_, observer, _, _, _) in
+                guard let observer = observer else { return }
+                let controller = Unmanaged<KeyboardViewController>
+                    .fromOpaque(observer)
+                    .takeUnretainedValue()
+                DispatchQueue.main.async {
+                    controller.onRecordingStarted()
+                }
+            },
+            "com.krakwhisper.recordingStarted" as CFString,
             nil,
             .deliverImmediately
         )
@@ -137,9 +157,11 @@ final class KeyboardViewController: UIInputViewController {
               let consumed = json["consumed"] as? Bool,
               consumed == false else { return }
         
-        // Dismiss mic overlay if showing
+        // Dismiss mic overlay and reset state
         dismissMicOverlay()
         waitingForResult = false
+        micButton?.backgroundColor = .systemTeal
+        micButton?.setImage(UIImage(systemName: "mic.fill"), for: .normal)
         
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         
@@ -338,15 +360,9 @@ final class KeyboardViewController: UIInputViewController {
         keyboardPage = (keyboardPage == .numbers) ? .symbols : .numbers; buildKeyRows()
     }
     
-    // MARK: - Mic Button — Voice Handoff
+    // MARK: - Mic Button — Background Recording via Darwin IPC
     
     @objc private func micTapped() {
-        if waitingForResult {
-            // Already waiting — check for result
-            checkForTranscriptionResult()
-            return
-        }
-        
         guard hasFullAccess else {
             statusLabel.text = "\u{26A0}\u{FE0F} Enable Full Access in Settings"
             statusLabel.textColor = .systemRed
@@ -357,31 +373,60 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         
+        if waitingForResult {
+            // Already recording — send stop signal
+            CFNotificationCenterPostNotification(
+                CFNotificationCenterGetDarwinNotifyCenter(),
+                CFNotificationName("com.krakwhisper.stopRecording" as CFString),
+                nil, nil, true
+            )
+            statusLabel.text = "\u{23F3} Stopping..."
+            statusLabel.textColor = .systemOrange
+            return
+        }
+        
         // Clear any old result
         if let url = sharedURL?.appendingPathComponent(resultFileName) {
             try? FileManager.default.removeItem(at: url)
         }
         
-        // Write intent so main app auto-records on launch
-        if let intentURL = sharedURL?.appendingPathComponent("keyboard-intent.json") {
-            let intent: [String: Any] = [
-                "action": "record",
-                "timestamp": Date().timeIntervalSince1970,
-                "source": "keyboard"
-            ]
-            if let data = try? JSONSerialization.data(withJSONObject: intent) {
-                try? data.write(to: intentURL)
-            }
-        }
-        
         waitingForResult = true
-        showMicOverlay()
+        
+        // Send Darwin notification to main app (running in background)
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            CFNotificationName("com.krakwhisper.startRecording" as CFString),
+            nil, nil, true
+        )
+        
+        statusLabel.text = "\u{1F3A4} Starting..."
+        statusLabel.textColor = .systemTeal
+        
+        // Update mic button to show recording state
+        micButton?.backgroundColor = .systemRed
+        micButton?.setImage(UIImage(systemName: "stop.fill"), for: .normal)
+        
+        // If main app doesn't respond within 3 seconds, show fallback
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, self.waitingForResult,
+                  self.statusLabel.text == "\u{1F3A4} Starting..." else { return }
+            // Main app not running — show fallback overlay
+            self.showFallbackOverlay()
+        }
     }
     
-    // MARK: - Mic Overlay UI
+    /// Called when main app confirms recording has started
+    func onRecordingStarted() {
+        statusLabel.text = "\u{1F3A4} Recording... tap mic to stop"
+        statusLabel.textColor = .systemRed
+        
+        micButton?.backgroundColor = .systemRed
+        micButton?.setImage(UIImage(systemName: "stop.fill"), for: .normal)
+    }
     
-    private func showMicOverlay() {
-        // Show overlay on top of keys with instructions
+    // MARK: - Fallback UI (when main app is not running)
+    
+    private func showFallbackOverlay() {
         let overlay = UIView()
         overlay.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.95)
         overlay.layer.cornerRadius = 12
@@ -395,25 +440,22 @@ final class KeyboardViewController: UIInputViewController {
             overlay.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -8),
         ])
         
-        // Mic icon
         let micIcon = UIImageView(image: UIImage(systemName: "mic.circle.fill"))
         micIcon.tintColor = .systemTeal
         micIcon.contentMode = .scaleAspectFit
         micIcon.translatesAutoresizingMaskIntoConstraints = false
         overlay.addSubview(micIcon)
         
-        // Title
         let title = UILabel()
-        title.text = "Voice Recording"
+        title.text = "Open KrakWhisper First"
         title.font = .systemFont(ofSize: 17, weight: .semibold)
         title.textColor = .label
         title.textAlignment = .center
         title.translatesAutoresizingMaskIntoConstraints = false
         overlay.addSubview(title)
         
-        // Instructions
         let instructions = UILabel()
-        instructions.text = "Open the KrakWhisper app to record.\nYour transcription will appear here automatically."
+        instructions.text = "Open KrakWhisper app once, then come back.\nIt will record in the background via Dynamic Island."
         instructions.font = .systemFont(ofSize: 13)
         instructions.textColor = .secondaryLabel
         instructions.textAlignment = .center
@@ -421,64 +463,48 @@ final class KeyboardViewController: UIInputViewController {
         instructions.translatesAutoresizingMaskIntoConstraints = false
         overlay.addSubview(instructions)
         
-        // Waiting indicator
-        let waitLabel = UILabel()
-        waitLabel.text = "\u{23F3} Waiting for transcription..."
-        waitLabel.font = .systemFont(ofSize: 12, weight: .medium)
-        waitLabel.textColor = .systemTeal
-        waitLabel.textAlignment = .center
-        waitLabel.translatesAutoresizingMaskIntoConstraints = false
-        overlay.addSubview(waitLabel)
-        
-        // Cancel button
         let cancel = UIButton(type: .system)
-        cancel.setTitle("Cancel", for: .normal)
-        cancel.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
-        cancel.setTitleColor(.systemGray, for: .normal)
-        cancel.addTarget(self, action: #selector(cancelMicOverlay), for: .touchUpInside)
+        cancel.setTitle("OK", for: .normal)
+        cancel.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
+        cancel.setTitleColor(.systemTeal, for: .normal)
+        cancel.addTarget(self, action: #selector(dismissFallback), for: .touchUpInside)
         cancel.translatesAutoresizingMaskIntoConstraints = false
         overlay.addSubview(cancel)
         
         NSLayoutConstraint.activate([
-            micIcon.topAnchor.constraint(equalTo: overlay.topAnchor, constant: 16),
+            micIcon.topAnchor.constraint(equalTo: overlay.topAnchor, constant: 20),
             micIcon.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
             micIcon.widthAnchor.constraint(equalToConstant: 44),
             micIcon.heightAnchor.constraint(equalToConstant: 44),
             
-            title.topAnchor.constraint(equalTo: micIcon.bottomAnchor, constant: 8),
+            title.topAnchor.constraint(equalTo: micIcon.bottomAnchor, constant: 10),
             title.leadingAnchor.constraint(equalTo: overlay.leadingAnchor, constant: 16),
             title.trailingAnchor.constraint(equalTo: overlay.trailingAnchor, constant: -16),
             
-            instructions.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 6),
+            instructions.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 8),
             instructions.leadingAnchor.constraint(equalTo: overlay.leadingAnchor, constant: 20),
             instructions.trailingAnchor.constraint(equalTo: overlay.trailingAnchor, constant: -20),
             
-            waitLabel.topAnchor.constraint(equalTo: instructions.bottomAnchor, constant: 12),
-            waitLabel.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
-            
-            cancel.bottomAnchor.constraint(equalTo: overlay.bottomAnchor, constant: -8),
+            cancel.bottomAnchor.constraint(equalTo: overlay.bottomAnchor, constant: -12),
             cancel.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
         ])
         
-        // Animate in
         overlay.alpha = 0
         UIView.animate(withDuration: 0.2) { overlay.alpha = 1 }
-        
         micOverlay = overlay
-        statusLabel.text = "\u{1F3A4} Open KrakWhisper app to record"
-        statusLabel.textColor = .systemTeal
     }
     
-    @objc private func cancelMicOverlay() {
+    @objc private func dismissFallback() {
         dismissMicOverlay()
+        resetMicState()
+    }
+    
+    private func resetMicState() {
         waitingForResult = false
         statusLabel.text = "KrakWhisper"
         statusLabel.textColor = .secondaryLabel
-        
-        // Clean up intent
-        if let intentURL = sharedURL?.appendingPathComponent("keyboard-intent.json") {
-            try? FileManager.default.removeItem(at: intentURL)
-        }
+        micButton?.backgroundColor = .systemTeal
+        micButton?.setImage(UIImage(systemName: "mic.fill"), for: .normal)
     }
     
     private func dismissMicOverlay() {

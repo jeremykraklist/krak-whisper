@@ -28,6 +28,8 @@
 		B030 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = P001; };
 		BK01 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FK01; };
 		B019 /* AppGroupCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = F019; };
+		B021 /* BackgroundRecordingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F023; };
+		B022 /* RecordingLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = F024; };
 		BK02 /* AppGroupCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = F019; };
 		BK07 /* KrakWhisperKeyboard.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = FK00; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXContainerItemProxy section */
@@ -70,6 +72,8 @@
 		F021 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F022 /* KrakWhisper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KrakWhisper.entitlements; sourceTree = "<group>"; };
 		F019 /* AppGroupCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupCrypto.swift; sourceTree = "<group>"; };
+		F023 /* BackgroundRecordingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundRecordingService.swift; sourceTree = "<group>"; };
+		F024 /* RecordingLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingLiveActivity.swift; sourceTree = "<group>"; };
 		FK00 /* KrakWhisperKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KrakWhisperKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		FK01 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
 		FK03 /* AudioLevelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioLevelView.swift; sourceTree = "<group>"; };
@@ -148,6 +152,8 @@
 				F005 /* ModelDownloadManager.swift */,
 				F006 /* WhisperTranscriptionService.swift */,
 				F017 /* KeyboardTranscriptionService.swift */,
+				F023 /* BackgroundRecordingService.swift */,
+				F024 /* RecordingLiveActivity.swift */,
 			);
 			path = "Sources/Services";
 			sourceTree = "<group>";
@@ -316,6 +322,8 @@
 				B017 /* KeyboardTranscriptionService.swift in Sources */,
 				B018 /* KeyboardRecordView.swift in Sources */,
 				B019 /* AppGroupCrypto.swift in Sources */,
+				B021 /* BackgroundRecordingService.swift in Sources */,
+				B022 /* RecordingLiveActivity.swift in Sources */,
 );
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -346,7 +354,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = KrakWhisper/KrakWhisper.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 29;
 				DEVELOPMENT_TEAM = J4F36L43U9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = KrakWhisper/Info.plist;
@@ -371,7 +379,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = KrakWhisper/KrakWhisper.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 29;
 				DEVELOPMENT_TEAM = J4F36L43U9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = KrakWhisper/Info.plist;
@@ -431,7 +439,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = KrakWhisperKeyboard/KrakWhisperKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 29;
 				DEVELOPMENT_TEAM = J4F36L43U9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = KrakWhisperKeyboard/Info.plist;
@@ -454,7 +462,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = KrakWhisperKeyboard/KrakWhisperKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 29;
 				DEVELOPMENT_TEAM = J4F36L43U9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = KrakWhisperKeyboard/Info.plist;

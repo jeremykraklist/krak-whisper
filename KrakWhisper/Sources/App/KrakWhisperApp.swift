@@ -25,6 +25,7 @@ struct KrakWhisperApp: App {
             .onAppear {
                 downloadManager.syncModelsToSharedContainer()
                 KeyboardTranscriptionService.shared.startListening()
+                BackgroundRecordingService.shared.startListening()
                 checkKeyboardIntent()
             }
             .onOpenURL { url in
