@@ -75,7 +75,7 @@ final class DictationViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(autoCleanup, forKey: "krakwhisper.mac.autoCleanup") }
     }
 
-    @Published private(set) var isQwenAvailable: Bool = false
+    @Published var isQwenAvailable: Bool = false
 
     @Published var selectedModel: WhisperModelSize {
         didSet {
