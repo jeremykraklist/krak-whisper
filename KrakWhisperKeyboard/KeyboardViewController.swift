@@ -335,57 +335,6 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         
-        // ============================================================
-        // EXPERIMENT: insertDictationResult proxy
-        // Research suggests GBoard/SwiftKey call insertDictationResult([])
-        // on textDocumentProxy to trigger native iOS dictation.
-        // System daemon handles mic, transcription, text insertion.
-        // ============================================================
-        
-        let proxy = textDocumentProxy as AnyObject
-        let dictSelector = NSSelectorFromString("insertDictationResult:")
-        
-        if proxy.responds(to: dictSelector) {
-            statusLabel.text = "\u{1F3A4} System dictation..."
-            statusLabel.textColor = .systemBlue
-            proxy.perform(dictSelector, with: [] as [Any])
-            logToAppGroup("insertDictationResult: RESPONDED, called with empty array")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-                self?.statusLabel.text = "KrakWhisper"
-                self?.statusLabel.textColor = .secondaryLabel
-            }
-            return
-        } else {
-            logToAppGroup("insertDictationResult: NOT available on proxy (\(type(of: textDocumentProxy)))")
-        }
-        
-        // Try other dictation-related selectors
-        for selectorName in ["requestDictationInput", "startDictation", "toggleDictation"] {
-            let sel = NSSelectorFromString(selectorName)
-            if proxy.responds(to: sel) {
-                statusLabel.text = "\u{1F3A4} \(selectorName)..."
-                statusLabel.textColor = .systemBlue
-                proxy.perform(sel)
-                logToAppGroup("\(selectorName): RESPONDED, called")
-                return
-            } else {
-                logToAppGroup("\(selectorName): not available")
-            }
-        }
-        
-        // Also probe the inputViewController (self) for dictation methods
-        let selfObj = self as AnyObject
-        for selectorName in ["requestDictation", "startDictation", "insertDictationResult:"] {
-            let sel = NSSelectorFromString(selectorName)
-            if selfObj.responds(to: sel) {
-                logToAppGroup("SELF.\(selectorName): RESPONDED!")
-            }
-        }
-        
-        // ============================================================
-        // FALLBACK: App handoff (standard pattern)
-        // ============================================================
-        
         // Clear any old result
         if let url = sharedURL?.appendingPathComponent(resultFileName) {
             try? FileManager.default.removeItem(at: url)
@@ -420,33 +369,91 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
     
-    /// Open main app via URL scheme.
-    /// Uses NSClassFromString to access UIApplication.shared indirectly
-    /// (keyboard extensions don't have direct UIApplication access).
-    /// Open main app via URL scheme.
-    /// ONLY use single-param openURL: via responder chain.
-    /// The 3-param openURL:options:completionHandler: CRASHES when called
-    /// via perform:with:with: (can not pass 3 args). Proven in builds 16-24.
-    /// NOTE: iOS will dismiss the custom keyboard when opening a URL.
+    /// Open main app via URL scheme — 3-tier strategy.
+    /// Tier 1: extensionContext?.open(url) — official NSExtensionContext API
+    /// Tier 2: UIApplication via NSClassFromString (indirect access)
+    /// Tier 3: Responder chain openURL: (legacy, broken on iOS 26)
     private func openMainApp() {
         guard let url = URL(string: "krakwhisper://record") else {
             statusLabel.text = "\u{26A0}\u{FE0F} Invalid URL"
             return
         }
         
-        // Responder chain with single-param openURL: (proven working)
+        // ============================================================
+        // TIER 1: extensionContext?.open(url)
+        // Official NSExtensionContext API. Research says this only works
+        // for Today widgets, but let's verify on iOS 26.3.
+        // ============================================================
+        if let context = extensionContext {
+            logToAppGroup("TIER 1: Trying extensionContext.open(\(url))")
+            context.open(url) { [weak self] success in
+                DispatchQueue.main.async {
+                    if success {
+                        self?.logToAppGroup("TIER 1: extensionContext.open SUCCESS ✅")
+                        self?.statusLabel.text = "\u{1F3A4} Recording..."
+                        self?.statusLabel.textColor = .systemGreen
+                    } else {
+                        self?.logToAppGroup("TIER 1: extensionContext.open FAILED ❌")
+                        self?.tryTier2(url)
+                    }
+                }
+            }
+            return
+        }
+        
+        logToAppGroup("TIER 1: No extensionContext available")
+        tryTier2(url)
+    }
+    
+    /// Tier 2: UIApplication.shared.open via NSClassFromString
+    private func tryTier2(_ url: URL) {
+        logToAppGroup("TIER 2: Trying UIApplication.shared.open via NSClassFromString")
+        
+        // Access UIApplication indirectly (extensions don't have direct access)
+        if let appClass = NSClassFromString("UIApplication") as? NSObject.Type,
+           let app = appClass.perform(NSSelectorFromString("sharedApplication"))?.takeUnretainedValue() {
+            let openSel = NSSelectorFromString("openURL:options:completionHandler:")
+            if app.responds(to: openSel) {
+                // Use performSelector with just the URL (2-arg version)
+                let simpleSel = NSSelectorFromString("openURL:")
+                if app.responds(to: simpleSel) {
+                    app.perform(simpleSel, with: url)
+                    logToAppGroup("TIER 2: UIApplication.openURL: called ✅")
+                    statusLabel.text = "\u{1F3A4} Recording..."
+                    statusLabel.textColor = .systemGreen
+                    return
+                }
+            }
+        }
+        
+        logToAppGroup("TIER 2: UIApplication approach FAILED ❌")
+        tryTier3(url)
+    }
+    
+    /// Tier 3: Legacy responder chain (broken on iOS 26 but try anyway)
+    private func tryTier3(_ url: URL) {
+        logToAppGroup("TIER 3: Trying responder chain openURL:")
+        
         var responder: UIResponder? = self as UIResponder
         let selector = NSSelectorFromString("openURL:")
         while let r = responder {
             if r.responds(to: selector) {
                 r.perform(selector, with: url)
+                logToAppGroup("TIER 3: Responder chain openURL: fired (may silently fail)")
                 return
             }
             responder = r.next
         }
         
-        statusLabel.text = "\u{26A0}\u{FE0F} Could not open app"
-        statusLabel.textColor = .systemRed
+        logToAppGroup("ALL TIERS FAILED ❌ — no way to open containing app")
+        statusLabel.text = "\u{26A0}\u{FE0F} Open KrakWhisper app manually"
+        statusLabel.textColor = .systemOrange
+        
+        // Auto-reset after 5 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            self?.statusLabel.text = "KrakWhisper"
+            self?.statusLabel.textColor = .secondaryLabel
+        }
     }
 }
 #endif
