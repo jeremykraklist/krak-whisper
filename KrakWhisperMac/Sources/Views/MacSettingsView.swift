@@ -1,4 +1,5 @@
 import SwiftUI
+import ServiceManagement
 import KrakWhisper
 
 /// Settings window for KrakWhisper macOS app.
@@ -34,8 +35,9 @@ struct MacSettingsView: View {
 
 struct GeneralSettingsTab: View {
     @ObservedObject var viewModel: DictationViewModel
-    @AppStorage("krakwhisper.mac.launchAtLogin") private var launchAtLogin = false
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @AppStorage("krakwhisper.mac.showFloatingPanel") private var showFloatingPanel = true
+    @AppStorage("krakwhisper.mac.showFloatingWidget") private var showFloatingWidget = true
     @AppStorage("krakwhisper.mac.autoDismissSeconds") private var autoDismissSeconds = 5.0
 
     var body: some View {
@@ -89,9 +91,26 @@ struct GeneralSettingsTab: View {
                 }
             }
 
+            Section("Widget") {
+                Toggle("Show floating mic widget", isOn: $showFloatingWidget)
+                    .help("Show a small floating mic button on screen for quick dictation")
+            }
+
             Section("System") {
                 Toggle("Launch at login", isOn: $launchAtLogin)
                     .help("Start KrakWhisper automatically when you log in")
+                    .onChange(of: launchAtLogin) { _, newValue in
+                        do {
+                            if newValue {
+                                try SMAppService.mainApp.register()
+                            } else {
+                                try SMAppService.mainApp.unregister()
+                            }
+                        } catch {
+                            // Revert on failure
+                            launchAtLogin = !newValue
+                        }
+                    }
             }
         }
         .formStyle(.grouped)
