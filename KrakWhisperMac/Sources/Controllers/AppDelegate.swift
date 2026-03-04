@@ -56,6 +56,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             await dictationViewModel.loadSelectedModel()
         }
 
+        // Check Qwen server availability
+        Task {
+            dictationViewModel.isQwenAvailable = await QwenCleanupService.shared.isAvailable()
+            if dictationViewModel.isQwenAvailable {
+                print("[KrakWhisper] Qwen cleanup server available on port 8179")
+            }
+        }
+
         // Check accessibility permissions (needed for global hotkey + paste-to-app)
         PasteService.requestAccessibilityIfNeeded()
     }

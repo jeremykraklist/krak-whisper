@@ -71,6 +71,12 @@ final class DictationViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(autoPaste, forKey: "krakwhisper.mac.autoPaste") }
     }
 
+    @Published var autoCleanup: Bool {
+        didSet { UserDefaults.standard.set(autoCleanup, forKey: "krakwhisper.mac.autoCleanup") }
+    }
+
+    @Published private(set) var isQwenAvailable: Bool = false
+
     @Published var selectedModel: WhisperModelSize {
         didSet {
             UserDefaults.standard.set(selectedModel.rawValue, forKey: "krakwhisper.mac.selectedModel")
@@ -101,6 +107,12 @@ final class DictationViewModel: ObservableObject {
             self.autoPaste = UserDefaults.standard.bool(forKey: "krakwhisper.mac.autoPaste")
         } else {
             self.autoPaste = true
+        }
+
+        if UserDefaults.standard.object(forKey: "krakwhisper.mac.autoCleanup") != nil {
+            self.autoCleanup = UserDefaults.standard.bool(forKey: "krakwhisper.mac.autoCleanup")
+        } else {
+            self.autoCleanup = true
         }
 
         if let savedModel = UserDefaults.standard.string(forKey: "krakwhisper.mac.selectedModel"),
@@ -287,11 +299,19 @@ final class DictationViewModel: ObservableObject {
     private func performTranscription(frames: [Float]) async {
         do {
             let result = try await transcriptionService.transcribe(audioFrames: frames)
-            let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            var text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
 
             guard !text.isEmpty else {
                 updateState(.error("No speech detected"))
                 return
+            }
+
+            // AI text cleanup via local Qwen 3.5 (if enabled and available)
+            if autoCleanup {
+                let cleaned = await QwenCleanupService.shared.cleanup(text)
+                if !cleaned.isEmpty {
+                    text = cleaned
+                }
             }
 
             lastTranscription = text
