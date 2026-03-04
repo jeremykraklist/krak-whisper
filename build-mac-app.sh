@@ -132,6 +132,19 @@ cat > "$CONTENTS/entitlements.plist" << ENTITLEMENTS
 </plist>
 ENTITLEMENTS
 
+# Codesign with entitlements if a signing identity is provided
+if [[ -n "${SIGNING_IDENTITY:-}" ]]; then
+    echo "▸ Signing with identity: $SIGNING_IDENTITY"
+    codesign --force --timestamp --sign "$SIGNING_IDENTITY" \
+        --entitlements "$CONTENTS/entitlements.plist" \
+        "$APP_DIR"
+    echo "▸ Verifying signature..."
+    codesign --verify --deep --strict "$APP_DIR"
+    echo "✓ Signature verified"
+else
+    echo "▸ Skipping codesign (set SIGNING_IDENTITY to sign)"
+fi
+
 echo ""
 echo "✓ Built: $APP_DIR"
 echo "  Version: $VERSION ($BUILD_NUMBER)"

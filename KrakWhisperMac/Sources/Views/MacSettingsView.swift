@@ -36,6 +36,7 @@ struct MacSettingsView: View {
 struct GeneralSettingsTab: View {
     @ObservedObject var viewModel: DictationViewModel
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var isUpdatingLaunchAtLogin = false
     @AppStorage("krakwhisper.mac.showFloatingPanel") private var showFloatingPanel = true
     @AppStorage("krakwhisper.mac.showFloatingWidget") private var showFloatingWidget = true
     @AppStorage("krakwhisper.mac.autoDismissSeconds") private var autoDismissSeconds = 5.0
@@ -100,6 +101,9 @@ struct GeneralSettingsTab: View {
                 Toggle("Launch at login", isOn: $launchAtLogin)
                     .help("Start KrakWhisper automatically when you log in")
                     .onChange(of: launchAtLogin) { _, newValue in
+                        guard !isUpdatingLaunchAtLogin else { return }
+                        isUpdatingLaunchAtLogin = true
+                        defer { isUpdatingLaunchAtLogin = false }
                         do {
                             if newValue {
                                 try SMAppService.mainApp.register()
@@ -107,7 +111,7 @@ struct GeneralSettingsTab: View {
                                 try SMAppService.mainApp.unregister()
                             }
                         } catch {
-                            // Revert on failure
+                            // Revert on failure (guard prevents re-trigger)
                             launchAtLogin = !newValue
                         }
                     }

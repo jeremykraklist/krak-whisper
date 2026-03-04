@@ -53,17 +53,29 @@ final class FloatingWidgetController {
         panel.contentView = hostingView
         panel.hidesOnDeactivate = false
 
-        // Restore saved position or default to bottom-right
-        let savedX = UserDefaults.standard.double(forKey: Self.positionXKey)
-        let savedY = UserDefaults.standard.double(forKey: Self.positionYKey)
+        // Restore saved position or default to bottom-right.
+        // Use object(forKey:) to distinguish "never saved" from a real (0,0) position.
+        let hasSavedX = UserDefaults.standard.object(forKey: Self.positionXKey) != nil
+        let hasSavedY = UserDefaults.standard.object(forKey: Self.positionYKey) != nil
 
-        if savedX != 0 || savedY != 0 {
-            panel.setFrameOrigin(NSPoint(x: savedX, y: savedY))
-        } else if let screen = NSScreen.main {
-            let screenFrame = screen.visibleFrame
-            let x = screenFrame.maxX - 76
-            let y = screenFrame.minY + 80
-            panel.setFrameOrigin(NSPoint(x: x, y: y))
+        if hasSavedX && hasSavedY {
+            let savedPoint = NSPoint(
+                x: UserDefaults.standard.double(forKey: Self.positionXKey),
+                y: UserDefaults.standard.double(forKey: Self.positionYKey)
+            )
+            // Validate the saved position is on a visible screen
+            let panelRect = NSRect(origin: savedPoint, size: panel.frame.size)
+            let isOnScreen = NSScreen.screens.contains { screen in
+                screen.visibleFrame.intersects(panelRect)
+            }
+            if isOnScreen {
+                panel.setFrameOrigin(savedPoint)
+            } else {
+                // Saved position is off-screen (display layout changed); reset to default
+                applyDefaultPosition(to: panel)
+            }
+        } else {
+            applyDefaultPosition(to: panel)
         }
 
         // Save position when the window moves
@@ -85,6 +97,18 @@ final class FloatingWidgetController {
     /// Whether the widget is currently visible.
     var isVisible: Bool {
         window?.isVisible ?? false
+    }
+
+    // MARK: - Helpers
+
+    /// Place the panel at the default bottom-right position on the main screen.
+    private func applyDefaultPosition(to panel: NSPanel) {
+        if let screen = NSScreen.main {
+            let screenFrame = screen.visibleFrame
+            let x = screenFrame.maxX - 76
+            let y = screenFrame.minY + 80
+            panel.setFrameOrigin(NSPoint(x: x, y: y))
+        }
     }
 
     /// Toggle widget visibility.

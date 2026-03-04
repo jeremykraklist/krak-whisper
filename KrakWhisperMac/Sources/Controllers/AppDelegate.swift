@@ -47,14 +47,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
-                let shouldShow = UserDefaults.standard.bool(forKey: "krakwhisper.mac.showFloatingWidget")
-                if shouldShow && !self.floatingWidgetController.isVisible {
-                    self.floatingWidgetController.show()
-                } else if !shouldShow && self.floatingWidgetController.isVisible {
-                    self.floatingWidgetController.hide()
-                }
+            guard let self else { return }
+            let shouldShow = UserDefaults.standard.bool(forKey: "krakwhisper.mac.showFloatingWidget")
+            if shouldShow && !self.floatingWidgetController.isVisible {
+                self.floatingWidgetController.show()
+            } else if !shouldShow && self.floatingWidgetController.isVisible {
+                self.floatingWidgetController.hide()
             }
         }
 
