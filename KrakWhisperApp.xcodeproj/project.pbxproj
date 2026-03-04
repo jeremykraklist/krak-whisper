@@ -28,6 +28,8 @@
 		B030 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = P001; };
 		BK01 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FK01; };
 		B019 /* AppGroupCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = F019; };
+		B021 /* QwenCleanupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F023; };
+		B031 /* llama in Frameworks */ = {isa = PBXBuildFile; productRef = P002; };
 		BK02 /* AppGroupCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = F019; };
 		BK07 /* KrakWhisperKeyboard.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = FK00; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXContainerItemProxy section */
@@ -70,6 +72,7 @@
 		F021 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F022 /* KrakWhisper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KrakWhisper.entitlements; sourceTree = "<group>"; };
 		F019 /* AppGroupCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupCrypto.swift; sourceTree = "<group>"; };
+		F023 /* QwenCleanupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QwenCleanupService.swift; sourceTree = "<group>"; };
 		FK00 /* KrakWhisperKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KrakWhisperKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		FK01 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
 		FK03 /* AudioLevelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioLevelView.swift; sourceTree = "<group>"; };
@@ -85,6 +88,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B030 /* SwiftWhisper in Frameworks */,
+				B031 /* llama in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -146,6 +150,7 @@
 				F004 /* AudioCaptureService.swift */,
 				F019 /* AppGroupCrypto.swift */,
 				F005 /* ModelDownloadManager.swift */,
+				F023 /* QwenCleanupService.swift */,
 				F006 /* WhisperTranscriptionService.swift */,
 				F017 /* KeyboardTranscriptionService.swift */,
 			);
@@ -218,6 +223,7 @@
 			name = KrakWhisper;
 			packageProductDependencies = (
 				P001 /* SwiftWhisper */,
+				P002 /* llama */,
 			);
 			productName = KrakWhisper;
 			productReference = F000 /* KrakWhisper.app */;
@@ -263,6 +269,7 @@
 			mainGroup = G000;
 			packageReferences = (
 				PKG1 /* SwiftWhisper */,
+				PKG2 /* llama.cpp */,
 			);
 			productRefGroup = G900 /* Products */;
 			projectDirPath = "";
@@ -316,6 +323,7 @@
 				B017 /* KeyboardTranscriptionService.swift in Sources */,
 				B018 /* KeyboardRecordView.swift in Sources */,
 				B019 /* AppGroupCrypto.swift in Sources */,
+				B021 /* QwenCleanupService.swift in Sources */,
 );
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -513,6 +521,14 @@
 				minimumVersion = 1.2.0;
 			};
 		};
+		PKG2 /* llama.cpp */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ggerganov/llama.cpp.git";
+			requirement = {
+				kind = revision;
+				revision = b6d6c5289f1c9c677657c380591201ddb210b649;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -520,6 +536,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = PKG1 /* SwiftWhisper */;
 			productName = SwiftWhisper;
+		};
+		P002 /* llama */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = PKG2 /* llama.cpp */;
+			productName = llama;
 		};
 /* End XCSwiftPackageProductDependency section */
 
