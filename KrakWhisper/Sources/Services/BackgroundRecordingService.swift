@@ -191,11 +191,12 @@ final class BackgroundRecordingService: NSObject, ObservableObject {
             return
         }
         
-        // Silence detection: if peak audio was below -40dB, it's likely silence
-        // Whisper hallucinates on silent audio (outputs music descriptions, etc.)
-        if peakPower < -40 {
+        // Silence detection: only skip if audio is extremely quiet (-55dB)
+        // Normal speech is -30 to -10dB on AVAudioRecorder scale
+        // -55dB catches true silence while allowing quiet speech
+        if peakPower < -55 {
             isTranscribing = false
-            writeResult(text: "", durationMs: 0, error: "No audio detected (silence)")
+            writeResult(text: "", durationMs: 0, error: "No audio detected")
             Task { @MainActor in
                 RecordingActivityManager.shared.updateError("No audio")
             }

@@ -448,17 +448,33 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: - App Handoff (fallback when background IPC fails)
     
     private func showAppHandoffMessage() {
-        // Show compact inline message — not a big overlay
-        statusLabel.text = "\u{1F4F1} Open KrakWhisper → record → come back"
-        statusLabel.textColor = .systemOrange
+        statusLabel.text = "\u{1F3A4} Opening app..."
+        statusLabel.textColor = .systemTeal
+        
+        // Try to open the app automatically via extensionContext
+        // This returns "success" on iOS 26 even if unreliable — worth trying
+        if let url = URL(string: "krakwhisper://record"),
+           let context = extensionContext {
+            context.open(url) { [weak self] success in
+                DispatchQueue.main.async {
+                    if !success {
+                        self?.statusLabel.text = "\u{1F4F1} Open KrakWhisper → record → come back"
+                        self?.statusLabel.textColor = .systemOrange
+                    }
+                }
+            }
+        } else {
+            statusLabel.text = "\u{1F4F1} Open KrakWhisper → record → come back"
+            statusLabel.textColor = .systemOrange
+        }
         
         // The keyboard intent file is already written,
         // so when user opens the app it will auto-record.
         // When they come back, Darwin notification + viewWillAppear
         // will pick up the result and auto-insert.
         
-        // Auto-reset after 15 seconds if no result
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+        // Auto-reset after 20 seconds if no result
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
             guard let self, self.waitingForResult, !self.backgroundConfirmed else { return }
             self.resetMicState()
         }
