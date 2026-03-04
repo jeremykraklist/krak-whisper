@@ -5,6 +5,7 @@ const Store = require('electron-store');
 const { AudioRecorder } = require('./audio-recorder');
 const { WhisperEngine } = require('./whisper-engine');
 const { ModelManager } = require('./model-manager');
+const { TextCleanup } = require('./text-cleanup');
 
 /** @type {Store} */
 const store = new Store({
@@ -13,6 +14,7 @@ const store = new Store({
     hotkey: 'CommandOrControl+Shift+W',
     autoCopy: true,
     autoPaste: true,
+    autoCleanup: true,
     showNotification: true,
     firstLaunch: true,
   },
@@ -30,6 +32,8 @@ let tray = null;
 let recorder;
 /** @type {WhisperEngine} */
 let whisperEngine;
+/** @type {TextCleanup} */
+let textCleanup;
 /** @type {ModelManager} */
 let modelManager;
 /** @type {boolean} */
@@ -55,6 +59,7 @@ app.whenReady().then(async () => {
   recorder = new AudioRecorder();
   modelManager = new ModelManager();
   whisperEngine = new WhisperEngine(modelManager);
+  textCleanup = new TextCleanup();
 
   // Start persistent whisper server (keeps model in GPU VRAM for sub-500ms transcription)
   const currentModel = store.get('model') || 'medium.en';
@@ -433,8 +438,22 @@ async function stopRecording() {
     const text = await whisperEngine.transcribe(audioBuffer, modelName);
 
     if (text && text.trim()) {
-      const trimmed = text.trim();
-      console.log('[transcription] Result:', trimmed.substring(0, 100));
+      let trimmed = text.trim();
+      console.log('[transcription] Raw:', trimmed.substring(0, 100));
+
+      // AI text cleanup via local Qwen 3.5 (if enabled)
+      if (store.get('autoCleanup')) {
+        try {
+          broadcastStatus('Cleaning up...');
+          const cleaned = await textCleanup.cleanup(trimmed);
+          if (cleaned && cleaned.length > 0) {
+            console.log('[cleanup] Cleaned:', cleaned.substring(0, 100));
+            trimmed = cleaned;
+          }
+        } catch (err) {
+          console.log('[cleanup] Failed, using raw text:', err.message);
+        }
+      }
 
       // Auto-copy to clipboard
       if (store.get('autoCopy')) {
