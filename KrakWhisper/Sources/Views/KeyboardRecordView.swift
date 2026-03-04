@@ -79,13 +79,9 @@ struct KeyboardRecordView: View {
                                 .lineLimit(3)
                         }
                         
-                        Text("Swipe back to your keyboard")
+                        Text("Returning to keyboard...")
                             .font(.headline)
                             .foregroundColor(.white.opacity(0.6))
-                        
-                        Image(systemName: "arrow.left")
-                            .font(.title)
-                            .foregroundColor(.white.opacity(0.4))
                     }
                 }
                 
@@ -97,6 +93,14 @@ struct KeyboardRecordView: View {
         }
         .onDisappear {
             recorder.cleanup()
+        }
+        .onChange(of: recorder.isDone) { _, done in
+            if done {
+                // Auto-dismiss after showing result briefly
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    dismiss()
+                }
+            }
         }
     }
 }

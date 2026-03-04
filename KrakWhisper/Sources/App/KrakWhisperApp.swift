@@ -31,7 +31,15 @@ struct KrakWhisperApp: App {
             .onOpenURL { url in
                 // Handle krakwhisper://record from keyboard extension
                 if url.host == "record" || url.path == "/record" {
-                    showKeyboardRecorder = true
+                    // Dismiss any existing recorder first, then re-show
+                    if showKeyboardRecorder {
+                        showKeyboardRecorder = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            showKeyboardRecorder = true
+                        }
+                    } else {
+                        showKeyboardRecorder = true
+                    }
                 }
             }
             .fullScreenCover(isPresented: $showKeyboardRecorder) {
@@ -71,8 +79,16 @@ struct KrakWhisperApp: App {
         
         // Delete the intent and open recorder
         try? FileManager.default.removeItem(at: intentURL)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            self.showKeyboardRecorder = true
+        if showKeyboardRecorder {
+            // Already showing — dismiss and re-show for fresh recording
+            showKeyboardRecorder = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.showKeyboardRecorder = true
+            }
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.showKeyboardRecorder = true
+            }
         }
     }
 }
