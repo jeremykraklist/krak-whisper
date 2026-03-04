@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     let dictationViewModel = DictationViewModel()
     private let hotkeyManager = HotkeyManager()
     private var statusBarController: StatusBarController!
+    private var floatingWidget: FloatingWidgetController!
     private var settingsWindow: NSWindow?
 
     /// Shared instance for access from views.
@@ -33,6 +34,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         // Set up status bar icon and popover
         statusBarController = StatusBarController(dictationViewModel: dictationViewModel)
+
+        // Set up floating widget (always-on-top mic button)
+        floatingWidget = FloatingWidgetController(dictationViewModel: dictationViewModel)
+        floatingWidget.show()
 
         // Register global hotkey (Cmd+Shift+W)
         hotkeyManager.onHotkeyPressed = { [weak self] in
