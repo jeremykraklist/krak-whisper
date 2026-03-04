@@ -398,10 +398,14 @@ class ServerManager {
       promises.push(this._killProcess(this.llamaServer));
     }
 
-    // Also kill any orphaned server processes by port (in case we didn't spawn them)
+    // Also kill orphaned server processes by port — only if we spawned them
     if (process.platform === 'win32') {
-      promises.push(this._killProcessByPort(this.whisperServer.port, 'whisper-server.exe'));
-      promises.push(this._killProcessByPort(this.llamaServer.port, 'llama-server.exe'));
+      if (this.whisperServer.process) {
+        promises.push(this._killProcessByPort(this.whisperServer.port, 'whisper-server.exe'));
+      }
+      if (this.llamaServer.process) {
+        promises.push(this._killProcessByPort(this.llamaServer.port, 'llama-server.exe'));
+      }
     }
 
     await Promise.allSettled(promises);

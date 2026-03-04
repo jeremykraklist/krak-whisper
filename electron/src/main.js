@@ -68,8 +68,9 @@ app.whenReady().then(async () => {
   serverManager = new ServerManager();
   startupManager = new StartupManager();
 
-  // Forward server status changes to settings window
+  // Forward server status changes to settings window and tray
   serverManager.onStatusChange((status) => {
+    updateTrayMenu();
     if (settingsWindow && !settingsWindow.isDestroyed()) {
       settingsWindow.webContents.send('server-status', status);
     }
@@ -104,7 +105,9 @@ app.on('before-quit', async (e) => {
 
     console.log('[main] Graceful shutdown — killing servers...');
     try {
-      await serverManager.shutdown();
+      if (serverManager && typeof serverManager.shutdown === 'function') {
+        await serverManager.shutdown();
+      }
     } catch (err) {
       console.error('[main] Server shutdown error:', err.message);
     }

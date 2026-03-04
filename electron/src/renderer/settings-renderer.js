@@ -20,6 +20,7 @@ const restartServersBtn = document.getElementById('restart-servers-btn');
 const MODIFIER_KEYS = new Set(['Control', 'Meta', 'Alt', 'Shift']);
 
 // ─── Init ────────────────────────────────────────────────────────────
+/** Initialize settings UI: load current settings, wire up event handlers. */
 async function init() {
   const settings = await window.krakwhisper.getSettings();
 
@@ -36,15 +37,25 @@ async function init() {
 
   // Handle startup toggle immediately (no need to save)
   launchAtStartupCheckbox.addEventListener('change', async () => {
-    const result = await window.krakwhisper.setStartupEnabled(launchAtStartupCheckbox.checked);
-    if (!result.success) {
-      launchAtStartupCheckbox.checked = !launchAtStartupCheckbox.checked;
-      showSaveError(result.error || 'Failed to update startup setting');
+    const desired = launchAtStartupCheckbox.checked;
+    launchAtStartupCheckbox.disabled = true;
+    try {
+      const result = await window.krakwhisper.setStartupEnabled(desired);
+      if (!result.success) {
+        launchAtStartupCheckbox.checked = !desired;
+        showSaveError(result.error || 'Failed to update startup setting');
+      }
+    } catch {
+      launchAtStartupCheckbox.checked = !desired;
+      showSaveError('Failed to update startup setting');
+    } finally {
+      launchAtStartupCheckbox.disabled = false;
     }
   });
 }
 
 // ─── Server Status ───────────────────────────────────────────────────
+/** Fetch current server status from main process and update UI. */
 async function refreshServerStatus() {
   try {
     const status = await window.krakwhisper.getServerStatus();
@@ -55,6 +66,9 @@ async function refreshServerStatus() {
   }
 }
 
+/** Update server status badges and error displays from a status object.
+ * @param {object} status - Server status containing whisper and llama sub-objects.
+ */
 function updateServerUI(status) {
   if (status.whisper) {
     updateBadge(whisperStatusBadge, status.whisper.status);
@@ -77,6 +91,10 @@ function updateServerUI(status) {
   }
 }
 
+/** Update a status badge element's text and CSS class.
+ * @param {HTMLElement} element - Badge DOM element.
+ * @param {string} status - Status string (stopped/starting/running/error).
+ */
 function updateBadge(element, status) {
   element.textContent = status;
   element.className = 'server-badge ' + status;
@@ -163,6 +181,9 @@ settingsForm.addEventListener('submit', async (e) => {
   }
 });
 
+/** Display a save error message in the status area, auto-clearing after 4s.
+ * @param {string} message - Error message to display.
+ */
 function showSaveError(message) {
   saveStatus.textContent = '✗ ' + message;
   saveStatus.style.color = '#e74c3c';
