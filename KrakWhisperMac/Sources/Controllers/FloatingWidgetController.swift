@@ -36,10 +36,10 @@ final class FloatingWidgetController {
             .environmentObject(dictationViewModel)
 
         let hostingView = NSHostingView(rootView: widgetView)
-        hostingView.frame = NSRect(x: 0, y: 0, width: 56, height: 56)
+        hostingView.frame = NSRect(x: 0, y: 0, width: 30, height: 30)
 
         let panel = DraggablePanel(
-            contentRect: NSRect(x: 0, y: 0, width: 56, height: 56),
+            contentRect: NSRect(x: 0, y: 0, width: 30, height: 30),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -101,13 +101,12 @@ final class FloatingWidgetController {
 
     // MARK: - Helpers
 
-    /// Place the panel at the default bottom-center position on the main screen,
-    /// just above the Dock.
+    /// Place the panel at the very bottom-center of the screen, barely visible.
     private func applyDefaultPosition(to panel: NSPanel) {
         if let screen = NSScreen.main {
-            let screenFrame = screen.visibleFrame
+            let screenFrame = screen.frame // Use full frame, not visibleFrame, to sit below dock
             let x = screenFrame.midX - panel.frame.width / 2
-            let y = screenFrame.minY + 20
+            let y = screenFrame.minY + 4 // Just 4px from the very bottom
             panel.setFrameOrigin(NSPoint(x: x, y: y))
         }
     }

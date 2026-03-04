@@ -15,8 +15,8 @@ struct FloatingWidgetView: View {
             // Pulse ring when recording
             if case .recording = viewModel.state {
                 Circle()
-                    .stroke(Color.red.opacity(0.4), lineWidth: 3)
-                    .frame(width: 52, height: 52)
+                    .stroke(Color.red.opacity(0.5), lineWidth: 2)
+                    .frame(width: 28, height: 28)
                     .scaleEffect(pulseScale)
                     .opacity(pulseOpacity)
                     .animation(
@@ -25,18 +25,17 @@ struct FloatingWidgetView: View {
                     )
             }
 
-            // Main button
+            // Main button — very small, subtle
             Circle()
-                .fill(buttonColor)
-                .frame(width: 44, height: 44)
-                .shadow(color: .black.opacity(0.3), radius: isHovering ? 6 : 3, y: 2)
+                .fill(buttonColor.opacity(isHovering ? 0.95 : 0.7))
+                .frame(width: 22, height: 22)
+                .shadow(color: .black.opacity(0.2), radius: isHovering ? 4 : 2, y: 1)
                 .overlay {
                     Image(systemName: buttonIcon)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.white)
-                        .symbolEffect(.pulse, isActive: viewModel.state == .recording)
                 }
-                .scaleEffect(isHovering ? 1.1 : 1.0)
+                .scaleEffect(isHovering ? 1.15 : 1.0)
                 .animation(.easeInOut(duration: 0.15), value: isHovering)
         }
         .onHover { hovering in
@@ -54,7 +53,7 @@ struct FloatingWidgetView: View {
                 NSApp.terminate(nil)
             }
         }
-        .frame(width: 56, height: 56)
+        .frame(width: 30, height: 30)
     }
 
     // MARK: - Computed Properties

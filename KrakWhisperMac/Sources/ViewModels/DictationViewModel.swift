@@ -96,7 +96,12 @@ final class DictationViewModel: ObservableObject {
     // MARK: - Init
 
     init() {
-        self.autoPaste = UserDefaults.standard.bool(forKey: "krakwhisper.mac.autoPaste")
+        // Default to true — UserDefaults.bool returns false for missing keys
+        if UserDefaults.standard.object(forKey: "krakwhisper.mac.autoPaste") != nil {
+            self.autoPaste = UserDefaults.standard.bool(forKey: "krakwhisper.mac.autoPaste")
+        } else {
+            self.autoPaste = true
+        }
 
         if let savedModel = UserDefaults.standard.string(forKey: "krakwhisper.mac.selectedModel"),
            let model = WhisperModelSize(rawValue: savedModel) {
