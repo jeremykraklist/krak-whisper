@@ -354,25 +354,21 @@ final class KeyboardViewController: UIInputViewController {
         openMainApp()
     }
     
-    /// Open main app via URL scheme using the modern iOS 26 responder chain pattern.
-    /// Uses `open(_:options:completionHandler:)` instead of the deprecated `openURL:` selector.
+    /// Open main app via URL scheme.
+    /// Keyboard extensions can't access UIApplication.shared directly,
+    /// so we walk the responder chain to find the hidden UIApplication instance.
     private func openMainApp() {
         guard let url = URL(string: "krakwhisper://record") else { return }
         
-        // Walk the responder chain to find something that responds to
-        // open(_:options:completionHandler:) — the modern API for iOS 26+
+        // Walk responder chain to find the hidden UIApplication
         var responder: UIResponder? = self as UIResponder
-        while responder != nil {
-            if let app = responder as? UIApplication {
-                app.open(url, options: [:], completionHandler: nil)
+        let selector = NSSelectorFromString("openURL:")
+        while let r = responder {
+            if r.responds(to: selector) {
+                r.perform(selector, with: url)
                 return
             }
-            let sel = sel_getUid("openURL:options:completionHandler:")
-            if let obj = responder, obj.responds(to: sel) {
-                _ = obj.perform(sel, with: url, with: NSDictionary())
-                return
-            }
-            responder = responder?.next
+            responder = r.next
         }
     }
 }
