@@ -224,6 +224,11 @@
       }
     }
 
+    // Capture foreground window BEFORE click steals focus from target app
+    btn.addEventListener('mousedown', (e) => {
+      ipcRenderer.send('capture-foreground');
+    });
+
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       ipcRenderer.send('widget-toggle');
