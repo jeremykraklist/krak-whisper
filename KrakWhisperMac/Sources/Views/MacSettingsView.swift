@@ -1,4 +1,5 @@
 import SwiftUI
+import ServiceManagement
 import KrakWhisper
 
 /// Settings window for KrakWhisper macOS app.
@@ -34,7 +35,9 @@ struct MacSettingsView: View {
 
 struct GeneralSettingsTab: View {
     @ObservedObject var viewModel: DictationViewModel
-    @AppStorage("krakwhisper.mac.launchAtLogin") private var launchAtLogin = false
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var isUpdatingLaunchAtLogin = false
+    @State private var isLlamaServerRunning = false
     @AppStorage("krakwhisper.mac.showFloatingPanel") private var showFloatingPanel = true
     @AppStorage("krakwhisper.mac.autoDismissSeconds") private var autoDismissSeconds = 5.0
 
@@ -92,10 +95,76 @@ struct GeneralSettingsTab: View {
             Section("System") {
                 Toggle("Launch at login", isOn: $launchAtLogin)
                     .help("Start KrakWhisper automatically when you log in")
+                    .onChange(of: launchAtLogin) { _, newValue in
+                        guard !isUpdatingLaunchAtLogin else { return }
+                        do {
+                            if newValue {
+                                try SMAppService.mainApp.register()
+                            } else {
+                                try SMAppService.mainApp.unregister()
+                            }
+                        } catch {
+                            // Revert on failure without recursive side effects
+                            isUpdatingLaunchAtLogin = true
+                            launchAtLogin = !newValue
+                            isUpdatingLaunchAtLogin = false
+                            print("[LaunchAtLogin] Failed: \(error.localizedDescription)")
+                        }
+                    }
+
+                // Llama-server / Qwen status
+                HStack {
+                    Text("Qwen AI Cleanup")
+                    Spacer()
+                    if isLlamaServerRunning {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(.green)
+                                .frame(width: 8, height: 8)
+                            Text("Running")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(.gray)
+                                .frame(width: 8, height: 8)
+                            Text("Stopped")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .onAppear { checkLlamaServerStatus() }
             }
         }
         .formStyle(.grouped)
         .padding()
+    }
+
+    /// Check if llama-server is running by probing its TCP port.
+    private func checkLlamaServerStatus() {
+        let port: UInt16 = 8179
+        let socketFD = socket(AF_INET, SOCK_STREAM, 0)
+        guard socketFD >= 0 else {
+            isLlamaServerRunning = false
+            return
+        }
+        defer { close(socketFD) }
+
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = port.bigEndian
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+
+        let result = withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
+                connect(socketFD, sockPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+
+        isLlamaServerRunning = (result == 0)
     }
 }
 
