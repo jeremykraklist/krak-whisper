@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, dialog, clipboard, Notification } = require('electron');
 const { execFile } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 const Store = require('electron-store');
 const { AudioRecorder } = require('./audio-recorder');
 const { WhisperEngine } = require('./whisper-engine');
@@ -36,6 +37,56 @@ let modelManager;
 let isRecording = false;
 /** @type {boolean} */
 let toggleInFlight = false;
+/** @type {string | null} HWND of the foreground window captured before recording */
+let lastForegroundHwnd = null;
+
+// ─── Helper path resolution ─────────────────────────────────────────
+
+/**
+ * Get the path to a helper executable in the bin directory.
+ * @param {string} name - e.g. 'paste-helper.exe'
+ * @returns {string}
+ */
+function getHelperPath(name) {
+  return path.join(__dirname, '..', 'bin', name);
+}
+
+/**
+ * Capture the HWND of the current foreground window.
+ * Uses native get-foreground.exe if available; falls back to PowerShell.
+ * @returns {Promise<string|null>} Decimal HWND string, or null on failure.
+ */
+async function captureTargetWindow() {
+  return new Promise((resolve) => {
+    const helperPath = getHelperPath('get-foreground.exe');
+    if (fs.existsSync(helperPath)) {
+      execFile(helperPath, { timeout: 1000 }, (err, stdout) => {
+        if (err) {
+          console.error('[paste] get-foreground.exe failed:', err.message);
+          resolve(null);
+        } else {
+          const hwnd = stdout.trim();
+          console.log('[paste] Captured HWND via native helper:', hwnd);
+          resolve(hwnd || null);
+        }
+      });
+    } else {
+      // Fallback: PowerShell (slower but works without native helper)
+      execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+        '(Add-Type -MemberDefinition \'[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();\' -Name W -Namespace U -PassThru)::GetForegroundWindow().ToInt64()'
+      ], { timeout: 2000 }, (err, stdout) => {
+        if (err) {
+          console.error('[paste] PowerShell HWND capture failed:', err.message);
+          resolve(null);
+        } else {
+          const hwnd = stdout.trim().split('\n').pop().trim();
+          console.log('[paste] Captured HWND via PowerShell:', hwnd);
+          resolve(hwnd || null);
+        }
+      });
+    }
+  });
+}
 
 // ─── Single instance lock ────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
@@ -122,6 +173,14 @@ function createWidget() {
 // Widget IPC
 ipcMain.on('widget-toggle', () => {
   toggleRecording();
+});
+
+// Capture foreground HWND on widget mousedown (before click steals focus)
+ipcMain.on('capture-foreground', async () => {
+  const hwnd = await captureTargetWindow();
+  if (hwnd) {
+    lastForegroundHwnd = hwnd;
+  }
 });
 
 ipcMain.on('widget-context-menu', () => {
@@ -280,19 +339,44 @@ function createSettingsWindow() {
 // ─── Auto-paste ──────────────────────────────────────────────────────
 
 /**
- * Simulate Ctrl+V keypress to paste from clipboard at cursor position.
- * Uses PowerShell + System.Windows.Forms.SendKeys on Windows.
+ * Simulate Ctrl+V paste using hybrid cascade approach.
+ * Primary: native paste-helper.exe (fast, ~50ms)
+ * Fallback: PowerShell keybd_event + WScript.Shell + SendKeys
+ *
+ * @param {string} text - The text to paste (used by native helper for clipboard write + Ctrl+V)
  */
-function simulatePaste() {
+function simulatePaste(text) {
   if (process.platform !== 'win32') return;
 
-  // Use PowerShell script with Win32 keybd_event for OS-level Ctrl+V.
-  // Falls back to WScript.Shell SendKeys if that fails.
-  // Must wait for clipboard to settle before simulating the keystroke.
+  const helperPath = getHelperPath('paste-helper.exe');
+  const hwnd = lastForegroundHwnd || '0';
+
+  if (fs.existsSync(helperPath)) {
+    // Fast native path: paste-helper.exe handles clipboard write + focus restore + Ctrl+V
+    console.log('[paste] Using native paste-helper, HWND:', hwnd);
+    execFile(helperPath, [hwnd, text], { timeout: 3000 }, (err, stdout, stderr) => {
+      if (err) {
+        console.error('[paste] Native helper failed:', stderr || err.message);
+        console.log('[paste] Falling back to PowerShell...');
+        simulatePasteFallback();
+      } else {
+        console.log('[paste] Native paste succeeded');
+      }
+    });
+  } else {
+    console.log('[paste] paste-helper.exe not found, using PowerShell fallback');
+    simulatePasteFallback();
+  }
+}
+
+/**
+ * PowerShell fallback paste — used when native paste-helper.exe is unavailable.
+ * Cascade: keybd_event → WScript.Shell SendKeys → System.Windows.Forms.SendKeys
+ */
+function simulatePasteFallback() {
   setTimeout(() => {
     const scriptPath = path.join(app.getPath('userData'), 'paste.ps1');
 
-    // Ensure the paste script exists in a writable location
     const scriptContent = [
       'Add-Type -TypeDefinition @"',
       'using System;',
@@ -314,14 +398,13 @@ function simulatePaste() {
       '[KBSim]::Paste()',
     ].join('\r\n');
 
-    const fs = require('fs');
     try {
       fs.writeFileSync(scriptPath, scriptContent, 'utf-8');
     } catch (e) {
       console.error('Failed to write paste script:', e.message);
     }
 
-    console.log('[paste] Attempting keybd_event paste via', scriptPath);
+    console.log('[paste] Fallback: attempting keybd_event paste via', scriptPath);
     execFile('powershell', [
       '-NoProfile',
       '-NonInteractive',
@@ -332,7 +415,6 @@ function simulatePaste() {
     }, (err, stdout, stderr) => {
       if (err) {
         console.error('[paste] keybd_event failed:', err.message, stderr);
-        // Fallback 1: WScript.Shell SendKeys — works from any context
         console.log('[paste] Trying WScript.Shell fallback...');
         const fallback = `(New-Object -ComObject WScript.Shell).SendKeys('^v')`;
         execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', fallback], {
@@ -340,7 +422,6 @@ function simulatePaste() {
         }, (err2, stdout2, stderr2) => {
           if (err2) {
             console.error('[paste] WScript.Shell also failed:', err2.message, stderr2);
-            // Fallback 2: System.Windows.Forms.SendKeys
             const fallback2 = `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')`;
             execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', fallback2], {
               timeout: 5000,
@@ -353,7 +434,7 @@ function simulatePaste() {
         console.log('[paste] keybd_event paste succeeded');
       }
     });
-  }, 500);
+  }, 50); // Reduced from 500ms — clipboard is already written at this point
 }
 
 // ─── Recording ───────────────────────────────────────────────────────
@@ -437,7 +518,7 @@ async function stopRecording() {
       // Auto-paste at cursor position
       if (store.get('autoPaste') && store.get('autoCopy')) {
         console.log('[transcription] Auto-paste enabled, simulating Ctrl+V');
-        simulatePaste();
+        simulatePaste(trimmed);
       } else {
         console.log('[transcription] autoPaste:', store.get('autoPaste'), 'autoCopy:', store.get('autoCopy'));
       }
@@ -492,7 +573,9 @@ function registerHotkey() {
   const hotkey = store.get('hotkey');
   globalShortcut.unregisterAll();
   try {
-    const success = globalShortcut.register(hotkey, () => {
+    const success = globalShortcut.register(hotkey, async () => {
+      // Capture HWND immediately — foreground is still the target app
+      lastForegroundHwnd = await captureTargetWindow();
       toggleRecording();
     });
     if (!success) {
