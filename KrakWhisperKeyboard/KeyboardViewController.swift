@@ -506,12 +506,6 @@ final class KeyboardViewController: UIInputViewController {
     private func showManualOpenMessage() {
         statusLabel.text = "\u{1F4F1} Open KrakWhisper → record → come back"
         statusLabel.textColor = .systemOrange
-    }
-        
-        // The keyboard intent file is already written,
-        // so when user opens the app it will auto-record.
-        // When they come back, Darwin notification + viewWillAppear
-        // will pick up the result and auto-insert.
         
         // Auto-reset after 20 seconds if no result
         DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
