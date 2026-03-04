@@ -1,3 +1,4 @@
+#if os(iOS)
 import Foundation
 import SwiftData
 
@@ -266,3 +267,5 @@ final class TranscriptionStore: ObservableObject {
         }
     }
 }
+
+#endif // os(iOS)

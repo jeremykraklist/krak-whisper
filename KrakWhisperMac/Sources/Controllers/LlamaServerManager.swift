@@ -65,12 +65,24 @@ final class LlamaServerManager {
             serverProcess = process
             didStartServer = true
             print("[LlamaServer] Started llama-server (PID \(process.processIdentifier)) on port \(Self.port)")
+
+            // Clean up state if the process exits unexpectedly (crash, killed externally)
+            process.terminationHandler = { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.serverProcess = nil
+                    self.didStartServer = false
+                    print("[LlamaServer] Process terminated unexpectedly — state cleared for restart")
+                }
+            }
         } catch {
             print("[LlamaServer] Failed to start: \(error.localizedDescription)")
         }
     }
 
     /// Kill the llama-server process if we started it.
+    /// Uses synchronous waits so the process is guaranteed dead before returning
+    /// (important during applicationWillTerminate where async blocks may not run).
     func stop() {
         guard let process = serverProcess, process.isRunning else {
             serverProcess = nil
@@ -79,18 +91,23 @@ final class LlamaServerManager {
 
         print("[LlamaServer] Stopping llama-server (PID \(process.processIdentifier))")
 
-        // Send SIGTERM for graceful shutdown
+        // Clear the terminationHandler to avoid conflicting state changes
+        process.terminationHandler = nil
+
+        let group = DispatchGroup()
+        group.enter()
+        process.terminationHandler = { _ in group.leave() }
+
+        // SIGTERM for graceful shutdown
         process.terminate()
 
-        // Give it 2 seconds to shut down, then SIGKILL
-        DispatchQueue.global().asyncAfter(deadline: .now() + 2.0) {
-            if process.isRunning {
-                process.interrupt() // SIGINT
-                DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) {
-                    if process.isRunning {
-                        kill(process.processIdentifier, SIGKILL)
-                    }
-                }
+        // Wait up to 2 seconds for graceful exit
+        if group.wait(timeout: .now() + 2.0) == .timedOut, process.isRunning {
+            // SIGINT as second attempt
+            process.interrupt()
+            if group.wait(timeout: .now() + 1.0) == .timedOut, process.isRunning {
+                // Force kill as last resort
+                kill(process.processIdentifier, SIGKILL)
             }
         }
 

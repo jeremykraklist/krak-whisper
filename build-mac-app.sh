@@ -39,8 +39,9 @@ done
 
 APP_NAME="KrakWhisper"
 BUNDLE_ID="com.krakowskilabs.KrakWhisper"
-VERSION="1.0.0"
-BUILD_NUMBER="${BUILD_NUMBER:-1}"
+# Derive version from environment, git tag, or fallback to 1.0.0
+VERSION="${RELEASE_VERSION:-$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "1.0.0")}"
+BUILD_NUMBER="${BUILD_NUMBER:-$(git rev-list --count HEAD 2>/dev/null || echo 1)}"
 MIN_MACOS="14.0"
 
 echo "▸ Building KrakWhisperMac ($BUILD_CONFIG)..."
@@ -183,8 +184,36 @@ if [[ "$CREATE_DMG" == true ]]; then
         -imagekey zlib-level=9 \
         -o "$DMG_PATH"
 
-    # Clean up
+    # Clean up staging
     rm -rf "$DMG_DIR" "$DMG_TEMP"
+
+    # ── Notarization ─────────────────────────────────────────
+    # Requires: NOTARIZE_APPLE_ID, NOTARIZE_PASSWORD (app-specific), NOTARIZE_TEAM_ID
+    if [[ -n "${NOTARIZE_APPLE_ID:-}" && -n "${NOTARIZE_PASSWORD:-}" && -n "${NOTARIZE_TEAM_ID:-}" ]]; then
+        echo "▸ Submitting DMG for notarization..."
+        xcrun notarytool submit "$DMG_PATH" \
+            --apple-id "$NOTARIZE_APPLE_ID" \
+            --password "$NOTARIZE_PASSWORD" \
+            --team-id "$NOTARIZE_TEAM_ID" \
+            --wait
+
+        if [[ $? -ne 0 ]]; then
+            echo "✗ Notarization failed"
+            exit 1
+        fi
+
+        echo "▸ Stapling notarization ticket..."
+        xcrun stapler staple "$DMG_PATH"
+
+        if [[ $? -ne 0 ]]; then
+            echo "✗ Stapling failed"
+            exit 1
+        fi
+
+        echo "✓ DMG notarized and stapled"
+    else
+        echo "⚠ Skipping notarization (set NOTARIZE_APPLE_ID, NOTARIZE_PASSWORD, NOTARIZE_TEAM_ID)"
+    fi
 
     DMG_SIZE=$(du -sh "$DMG_PATH" | awk '{print $1}')
     echo "✓ DMG created: $DMG_PATH ($DMG_SIZE)"
