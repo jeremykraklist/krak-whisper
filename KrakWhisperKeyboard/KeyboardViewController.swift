@@ -335,6 +335,57 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         
+        // ============================================================
+        // EXPERIMENT: insertDictationResult proxy
+        // Research suggests GBoard/SwiftKey call insertDictationResult([])
+        // on textDocumentProxy to trigger native iOS dictation.
+        // System daemon handles mic, transcription, text insertion.
+        // ============================================================
+        
+        let proxy = textDocumentProxy as AnyObject
+        let dictSelector = NSSelectorFromString("insertDictationResult:")
+        
+        if proxy.responds(to: dictSelector) {
+            statusLabel.text = "\u{1F3A4} System dictation..."
+            statusLabel.textColor = .systemBlue
+            proxy.perform(dictSelector, with: [] as [Any])
+            logToAppGroup("insertDictationResult: RESPONDED, called with empty array")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+                self?.statusLabel.text = "KrakWhisper"
+                self?.statusLabel.textColor = .secondaryLabel
+            }
+            return
+        } else {
+            logToAppGroup("insertDictationResult: NOT available on proxy (\(type(of: textDocumentProxy)))")
+        }
+        
+        // Try other dictation-related selectors
+        for selectorName in ["requestDictationInput", "startDictation", "toggleDictation"] {
+            let sel = NSSelectorFromString(selectorName)
+            if proxy.responds(to: sel) {
+                statusLabel.text = "\u{1F3A4} \(selectorName)..."
+                statusLabel.textColor = .systemBlue
+                proxy.perform(sel)
+                logToAppGroup("\(selectorName): RESPONDED, called")
+                return
+            } else {
+                logToAppGroup("\(selectorName): not available")
+            }
+        }
+        
+        // Also probe the inputViewController (self) for dictation methods
+        let selfObj = self as AnyObject
+        for selectorName in ["requestDictation", "startDictation", "insertDictationResult:"] {
+            let sel = NSSelectorFromString(selectorName)
+            if selfObj.responds(to: sel) {
+                logToAppGroup("SELF.\(selectorName): RESPONDED!")
+            }
+        }
+        
+        // ============================================================
+        // FALLBACK: App handoff (standard pattern)
+        // ============================================================
+        
         // Clear any old result
         if let url = sharedURL?.appendingPathComponent(resultFileName) {
             try? FileManager.default.removeItem(at: url)
@@ -352,6 +403,21 @@ final class KeyboardViewController: UIInputViewController {
         statusLabel.textColor = .systemBlue
         
         openMainApp()
+    }
+    
+    // MARK: - Debug Logging
+    
+    private func logToAppGroup(_ message: String) {
+        guard let url = sharedURL?.appendingPathComponent("keyboard-debug.log") else { return }
+        let ts = ISO8601DateFormatter().string(from: Date())
+        let entry = "[\(ts)] \(message)\n"
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            if let data = entry.data(using: .utf8) { handle.write(data) }
+            handle.closeFile()
+        } else {
+            try? entry.write(to: url, atomically: true, encoding: .utf8)
+        }
     }
     
     /// Open main app via URL scheme.
