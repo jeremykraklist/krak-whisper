@@ -206,7 +206,7 @@ final class BackgroundRecordingService: NSObject, ObservableObject {
     
     // MARK: - On-device Whisper
     
-    private func transcribeOnDevice(wavData: Data) async -> TranscriptionResult? {
+    private func transcribeOnDevice(wavData: Data) async -> BGTranscriptionResult? {
         let modelSizes = ["small", "base", "tiny"]
         let searchDirs: [URL] = [sharedURL, FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first].compactMap { $0 }
         
@@ -225,7 +225,7 @@ final class BackgroundRecordingService: NSObject, ObservableObject {
                     // Strip >> prefix from whisper.cpp output
                     let cleaned = text.hasPrefix(">>") ? String(text.dropFirst(2)).trimmingCharacters(in: .whitespaces) : text
                     let ms = Int(Date().timeIntervalSince(start) * 1000)
-                    return TranscriptionResult(text: cleaned, durationMs: ms)
+                    return BGTranscriptionResult(text: cleaned, durationMs: ms)
                 } catch {
                     continue
                 }
@@ -236,7 +236,7 @@ final class BackgroundRecordingService: NSObject, ObservableObject {
     
     // MARK: - API Fallback
     
-    private func transcribeViaAPI(wavData: Data) async -> TranscriptionResult? {
+    private func transcribeViaAPI(wavData: Data) async -> BGTranscriptionResult? {
         guard let url = URL(string: whisperAPIURL) else { return nil }
         
         let boundary = "KW-\(UUID().uuidString)"
@@ -258,7 +258,7 @@ final class BackgroundRecordingService: NSObject, ObservableObject {
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let text = json["text"] as? String else { return nil }
             let ms = Int(Date().timeIntervalSince(start) * 1000)
-            return TranscriptionResult(text: text.trimmingCharacters(in: .whitespacesAndNewlines), durationMs: ms)
+            return BGTranscriptionResult(text: text.trimmingCharacters(in: .whitespacesAndNewlines), durationMs: ms)
         } catch {
             return nil
         }
@@ -307,7 +307,7 @@ final class BackgroundRecordingService: NSObject, ObservableObject {
     }
 }
 
-private struct TranscriptionResult {
+private struct BGTranscriptionResult {
     let text: String
     let durationMs: Int
 }
