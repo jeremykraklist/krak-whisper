@@ -16,6 +16,7 @@ final class BackgroundRecordingService: NSObject, ObservableObject {
     @Published var isRecording = false
     @Published var isTranscribing = false
     @Published var duration: TimeInterval = 0
+    private var peakPower: Float = -160.0
     
     private let appGroupID = "group.com.krakwhisper.shared"
     private let resultFileName = "keyboard-result.json"
@@ -100,8 +101,9 @@ final class BackgroundRecordingService: NSObject, ObservableObject {
         let session = AVAudioSession.sharedInstance()
         do {
             // Use playAndRecord to keep background audio session alive
-            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
-            try session.setActive(true)
+            // .mixWithOthers allows recording while other audio plays
+            try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth, .mixWithOthers])
+            try session.setActive(true, options: [])
         } catch {
             writeResult(text: "", durationMs: 0, error: "Mic error: \(error.localizedDescription)")
             return
@@ -121,10 +123,12 @@ final class BackgroundRecordingService: NSObject, ObservableObject {
         
         do {
             let recorder = try AVAudioRecorder(url: url, settings: settings)
+            recorder.isMeteringEnabled = true
             recorder.record()
             audioRecorder = recorder
             isRecording = true
             duration = 0
+            peakPower = -160.0
             
             // Start Live Activity
             Task { @MainActor in
@@ -138,10 +142,15 @@ final class BackgroundRecordingService: NSObject, ObservableObject {
                 nil, nil, true
             )
             
-            // Duration timer
+            // Duration timer + metering
             timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
                 guard let self, self.isRecording else { return }
                 self.duration += 0.5
+                
+                // Track peak audio level
+                self.audioRecorder?.updateMeters()
+                let power = self.audioRecorder?.averagePower(forChannel: 0) ?? -160
+                if power > self.peakPower { self.peakPower = power }
                 
                 Task { @MainActor in
                     RecordingActivityManager.shared.updateDuration(self.duration)
@@ -179,6 +188,18 @@ final class BackgroundRecordingService: NSObject, ObservableObject {
             Task { @MainActor in
                 RecordingActivityManager.shared.updateError("Too short")
             }
+            return
+        }
+        
+        // Silence detection: if peak audio was below -40dB, it's likely silence
+        // Whisper hallucinates on silent audio (outputs music descriptions, etc.)
+        if peakPower < -40 {
+            isTranscribing = false
+            writeResult(text: "", durationMs: 0, error: "No audio detected (silence)")
+            Task { @MainActor in
+                RecordingActivityManager.shared.updateError("No audio")
+            }
+            try? FileManager.default.removeItem(at: url)
             return
         }
         
