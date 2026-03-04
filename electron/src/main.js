@@ -56,6 +56,16 @@ app.whenReady().then(async () => {
   modelManager = new ModelManager();
   whisperEngine = new WhisperEngine(modelManager);
 
+  // Start persistent whisper server (keeps model in GPU VRAM for sub-500ms transcription)
+  const currentModel = store.get('model') || 'medium.en';
+  whisperEngine.ensureServerRunning(currentModel).then((running) => {
+    if (running) {
+      console.log('[KrakWhisper] Whisper server running — GPU-accelerated mode');
+    } else {
+      console.log('[KrakWhisper] Whisper server not available — using CLI fallback');
+    }
+  }).catch(() => {});
+
   createTray();
   createWidget();
   registerHotkey();

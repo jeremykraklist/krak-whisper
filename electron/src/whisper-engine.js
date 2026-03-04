@@ -1,16 +1,19 @@
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const http = require('http');
 
 /**
- * WhisperEngine — Transcribes audio using the whisper-cli.exe binary.
+ * WhisperEngine — Transcribes audio using whisper.cpp.
  *
- * Uses the pre-built whisper.cpp CLI binary to transcribe WAV audio files.
- * The binary is bundled in `electron/bin/` along with required DLLs
- * (whisper.dll, ggml-cpu.dll).
+ * Two modes:
+ * 1. SERVER MODE (preferred): Uses persistent whisper-server.exe on port 8178.
+ *    Model stays loaded in GPU VRAM = sub-500ms transcription.
+ * 2. CLI MODE (fallback): Spawns whisper-cli.exe per transcription.
+ *    Model reloads each time = ~3.3s per transcription.
  *
- * Usage: whisper-cli.exe -m <model.bin> -f <audio.wav> --no-gpu -t 8
+ * The engine automatically tries server first, falls back to CLI.
  */
 class WhisperEngine {
   /**
@@ -18,10 +21,13 @@ class WhisperEngine {
    */
   constructor(modelManager) {
     this.modelManager = modelManager;
+    this.serverUrl = 'http://127.0.0.1:8178';
+    this.serverProcess = null;
   }
 
   /**
    * Transcribe a PCM audio buffer (16-bit, 16kHz, mono).
+   * Tries persistent server first (sub-500ms), falls back to CLI (~3.3s).
    * @param {Buffer} audioBuffer - Raw PCM audio data
    * @param {string} modelName - Name of the model to use (e.g. 'small.en')
    * @returns {Promise<string>} Transcribed text
@@ -38,6 +44,16 @@ class WhisperEngine {
 
     try {
       this._writeWav(wavPath, audioBuffer);
+
+      // Try server mode first (sub-500ms with model pre-loaded in GPU)
+      try {
+        const text = await this._transcribeViaServer(wavPath);
+        if (text !== null) return text;
+      } catch {
+        // Server not available — fall through to CLI
+      }
+
+      // Fallback: CLI mode (~3.3s with model reload)
       const text = await this._runWhisper(wavPath, modelPath);
       return text;
     } finally {
@@ -50,6 +66,159 @@ class WhisperEngine {
         }
       }
     }
+  }
+
+  /**
+   * Transcribe via the persistent whisper-server (HTTP API).
+   * Returns null if server is not running.
+   * @param {string} wavPath
+   * @returns {Promise<string|null>}
+   */
+  async _transcribeViaServer(wavPath) {
+    const fileBuffer = fs.readFileSync(wavPath);
+    const boundary = `----KrakWhisper${Date.now()}`;
+
+    // Build multipart form data manually (Node.js compatible)
+    const fileName = path.basename(wavPath);
+    let body = '';
+    body += `--${boundary}\r\n`;
+    body += `Content-Disposition: form-data; name="file"; filename="${fileName}"\r\n`;
+    body += `Content-Type: audio/wav\r\n\r\n`;
+
+    const bodyStart = Buffer.from(body, 'utf-8');
+    const bodyEnd = Buffer.from(
+      `\r\n--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="response_format"\r\n\r\n` +
+      `json\r\n--${boundary}--\r\n`,
+      'utf-8'
+    );
+
+    const fullBody = Buffer.concat([bodyStart, fileBuffer, bodyEnd]);
+
+    return new Promise((resolve, reject) => {
+      const req = http.request(
+        `${this.serverUrl}/inference`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': `multipart/form-data; boundary=${boundary}`,
+            'Content-Length': fullBody.length,
+          },
+          timeout: 30000,
+        },
+        (res) => {
+          let data = '';
+          res.on('data', (chunk) => (data += chunk));
+          res.on('end', () => {
+            if (res.statusCode !== 200) {
+              reject(new Error(`Server returned ${res.statusCode}`));
+              return;
+            }
+            try {
+              const json = JSON.parse(data);
+              resolve((json.text || '').trim());
+            } catch {
+              reject(new Error('Invalid JSON from server'));
+            }
+          });
+        }
+      );
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Server timeout'));
+      });
+      req.write(fullBody);
+      req.end();
+    });
+  }
+
+  /**
+   * Start the persistent whisper-server if not already running.
+   * Called on app startup.
+   * @param {string} modelName
+   */
+  async ensureServerRunning(modelName) {
+    // Check if server is already running
+    try {
+      const text = await this._transcribeViaServer(null).catch(() => null);
+      // If we get here without error, server is running
+      return true;
+    } catch {
+      // Not running — check with a simple GET
+    }
+
+    try {
+      await new Promise((resolve, reject) => {
+        const req = http.get(`${this.serverUrl}`, (res) => {
+          if (res.statusCode === 200) resolve(true);
+          else reject(new Error(`Status ${res.statusCode}`));
+          res.resume();
+        });
+        req.on('error', reject);
+        req.setTimeout(2000, () => { req.destroy(); reject(new Error('timeout')); });
+      });
+      return true; // Already running
+    } catch {
+      // Not running — start it
+    }
+
+    const modelPath = this.modelManager.getModelPath(modelName);
+    if (!modelPath) return false;
+
+    const serverBinary = this._getWhisperServerPath();
+    if (!fs.existsSync(serverBinary)) return false;
+
+    const binDir = path.dirname(serverBinary);
+    const env = { ...process.env };
+    if (process.platform === 'win32') {
+      env.PATH = binDir + ';' + (env.PATH || '');
+    }
+
+    this.serverProcess = spawn(serverBinary, [
+      '--model', modelPath,
+      '--host', '127.0.0.1',
+      '--port', '8178',
+      '--threads', String(Math.max(4, Math.min(os.cpus().length, 8))),
+    ], {
+      env,
+      cwd: binDir,
+      detached: true,
+      stdio: 'ignore',
+    });
+    this.serverProcess.unref();
+
+    // Wait for server to be ready (up to 15 seconds for model load)
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      try {
+        await new Promise((resolve, reject) => {
+          const req = http.get(`${this.serverUrl}`, (res) => {
+            if (res.statusCode === 200) resolve(true);
+            else reject();
+            res.resume();
+          });
+          req.on('error', reject);
+          req.setTimeout(1000, () => { req.destroy(); reject(); });
+        });
+        return true;
+      } catch {
+        continue;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Get path to whisper-server binary.
+   */
+  _getWhisperServerPath() {
+    const isDev = !require('electron').app.isPackaged;
+    const binaryName = process.platform === 'win32' ? 'whisper-server.exe' : 'whisper-server';
+    if (isDev) {
+      return path.join(__dirname, '..', 'bin', binaryName);
+    }
+    return path.join(process.resourcesPath, 'bin', binaryName);
   }
 
   /**
