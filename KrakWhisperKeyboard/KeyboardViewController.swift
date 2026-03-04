@@ -1,5 +1,6 @@
 #if os(iOS)
 import UIKit
+import SwiftUI
 import CryptoKit
 
 // MARK: - KrakWhisper QWERTY Keyboard
@@ -7,6 +8,11 @@ import CryptoKit
 // Mic button opens the main app (via URL scheme) which records + transcribes.
 // Keyboard receives Darwin notification when result is ready, reads encrypted
 // result from App Group, decrypts, and inserts text.
+//
+// URL Opening Strategy (iOS 26):
+// The old responder chain openURL: hack is BROKEN since iOS 18.
+// We now use extensionContext?.open(url) as the primary method,
+// with a SwiftUI Link overlay as fallback.
 
 final class KeyboardViewController: UIInputViewController {
     
@@ -326,12 +332,20 @@ final class KeyboardViewController: UIInputViewController {
         keyboardPage = (keyboardPage == .numbers) ? .symbols : .numbers; buildKeyRows()
     }
     
-    // MARK: - Mic — Opens Main App (iOS 26 modern URL scheme)
+    // MARK: - Mic — Opens Main App (iOS 26 compatible)
+    
+    /// Invisible SwiftUI Link used as fallback for URL opening when
+    /// extensionContext?.open() fails. Hosted in a UIHostingController.
+    private var linkHostingView: UIView?
     
     @objc private func micTapped() {
         guard hasFullAccess else {
             statusLabel.text = "\u{26A0}\u{FE0F} Enable Full Access in Settings"
             statusLabel.textColor = .systemRed
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                self?.statusLabel.text = "KrakWhisper"
+                self?.statusLabel.textColor = .secondaryLabel
+            }
             return
         }
         
@@ -355,20 +369,90 @@ final class KeyboardViewController: UIInputViewController {
     }
     
     /// Open main app via URL scheme.
-    /// Uses NSClassFromString to access UIApplication.shared indirectly
-    /// (keyboard extensions don't have direct UIApplication access).
-    /// Open main app via URL scheme.
-    /// ONLY use single-param openURL: via responder chain.
-    /// The 3-param openURL:options:completionHandler: CRASHES when called
-    /// via perform:with:with: (can not pass 3 args). Proven in builds 16-24.
-    /// NOTE: iOS will dismiss the custom keyboard when opening a URL.
+    /// Strategy 1: extensionContext?.open(url) — the official NSExtensionContext API
+    /// Strategy 2: SwiftUI Link programmatic trigger (KeyboardKit approach for iOS 18+)
+    /// Strategy 3: Legacy responder chain (kept as last resort, unlikely to work)
+    ///
+    /// NOTE: All approaches require Full Access. iOS will dismiss the keyboard
+    /// when the main app opens. User returns via the "Back to" status bar pill.
     private func openMainApp() {
         guard let url = URL(string: "krakwhisper://record") else {
             statusLabel.text = "\u{26A0}\u{FE0F} Invalid URL"
+            statusLabel.textColor = .systemRed
             return
         }
         
-        // Responder chain with single-param openURL: (proven working)
+        // Strategy 1: NSExtensionContext.open() — official API for extensions
+        // This is the documented way for extensions to ask the system to open a URL.
+        if let context = extensionContext {
+            context.open(url) { [weak self] success in
+                DispatchQueue.main.async {
+                    if success {
+                        self?.statusLabel.text = "\u{1F3A4} Recording in KrakWhisper..."
+                        self?.statusLabel.textColor = .systemGreen
+                    } else {
+                        // Strategy 1 failed, try fallback
+                        self?.openMainAppViaLink(url)
+                    }
+                }
+            }
+            return
+        }
+        
+        // No extension context available, try fallback
+        openMainAppViaLink(url)
+    }
+    
+    /// Fallback: Use a SwiftUI Link to open the URL.
+    /// This is the approach KeyboardKit 8.8.6+ uses since iOS 18 broke
+    /// the selector-based method. SwiftUI Link uses a different code path
+    /// that the system still honors for URL opening.
+    private func openMainAppViaLink(_ url: URL) {
+        // Create a temporary SwiftUI Link view and trigger it
+        let linkView = OpenURLLink(url: url)
+        let hosting = UIHostingController(rootView: linkView)
+        hosting.view.frame = CGRect(x: -100, y: -100, width: 1, height: 1)
+        hosting.view.alpha = 0.01 // Nearly invisible
+        view.addSubview(hosting.view)
+        linkHostingView = hosting.view
+        
+        // The Link needs to be "tapped" — we trigger via accessibility
+        // Give the system a moment to lay out, then trigger
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            // Find the Link button in the hosting view and trigger it
+            if let linkButton = self?.findLinkButton(in: hosting.view) {
+                linkButton.sendActions(for: .touchUpInside)
+            } else {
+                // If we can't find the link button, try legacy method
+                self?.openMainAppLegacy(url)
+            }
+            
+            // Cleanup hosting view after a delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                self?.linkHostingView?.removeFromSuperview()
+                self?.linkHostingView = nil
+            }
+        }
+    }
+    
+    /// Recursively find a UIControl (the Link's button) in a view hierarchy.
+    private func findLinkButton(in view: UIView) -> UIControl? {
+        if let control = view as? UIControl {
+            return control
+        }
+        for subview in view.subviews {
+            if let found = findLinkButton(in: subview) {
+                return found
+            }
+        }
+        return nil
+    }
+    
+    /// Legacy fallback: responder chain openURL (unlikely to work on iOS 26,
+    /// but kept as absolute last resort).
+    private func openMainAppLegacy(_ url: URL) {
+        // Try the modern UIApplication.open approach via responder chain
+        // Use the 1-param openURL: selector as last resort
         var responder: UIResponder? = self as UIResponder
         let selector = NSSelectorFromString("openURL:")
         while let r = responder {
@@ -379,8 +463,30 @@ final class KeyboardViewController: UIInputViewController {
             responder = r.next
         }
         
-        statusLabel.text = "\u{26A0}\u{FE0F} Could not open app"
-        statusLabel.textColor = .systemRed
+        statusLabel.text = "\u{26A0}\u{FE0F} Open KrakWhisper manually"
+        statusLabel.textColor = .systemOrange
+        
+        // Reset status after delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            self?.statusLabel.text = "KrakWhisper"
+            self?.statusLabel.textColor = .secondaryLabel
+        }
+    }
+}
+
+// MARK: - SwiftUI Link for URL Opening (iOS 18+ compatible)
+
+/// A minimal SwiftUI view containing a Link that opens the given URL.
+/// Used as a fallback when extensionContext?.open() doesn't work.
+private struct OpenURLLink: View {
+    let url: URL
+    
+    var body: some View {
+        Link(destination: url) {
+            Color.clear
+                .frame(width: 44, height: 44)
+        }
+        .accessibilityIdentifier("krakwhisper-open-link")
     }
 }
 #endif

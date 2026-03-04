@@ -1,6 +1,7 @@
 #if os(iOS)
 import SwiftUI
 import AVFoundation
+import Speech
 import SwiftWhisper
 import CryptoKit
 
@@ -188,15 +189,19 @@ class KeyboardRecordViewModel: ObservableObject {
         statusIcon = "waveform"
         statusColor = .blue
         
-        // Try on-device Whisper first, fall back to API
+        // Transcription priority:
+        // 1. Apple SFSpeechRecognizer (on-device, fast, zero model download)
+        // 2. On-device Whisper (if model is downloaded)
+        // 3. Contabo Whisper API (network fallback)
         Task {
-            var result = await transcribeOnDevice(wavData: wavData)
+            var result = await transcribeWithSFSpeech(wavURL: recordingURL!)
+            if result == nil { result = await transcribeOnDevice(wavData: wavData) }
             if result == nil { result = await transcribeViaAPI(wavData: wavData) }
             
             await MainActor.run {
                 isTranscribing = false
                 
-                if let result {
+                if let result, !result.text.isEmpty {
                     transcribedText = result.text
                     writeResult(text: result.text, durationMs: result.durationMs, error: nil)
                     statusText = "Done!"
@@ -213,7 +218,68 @@ class KeyboardRecordViewModel: ObservableObject {
         }
     }
     
-    // MARK: - On-device Whisper
+    // MARK: - Apple SFSpeechRecognizer (Primary — fast, no model download)
+    
+    private func transcribeWithSFSpeech(wavURL: URL) async -> TranscriptionOutput? {
+        guard SFSpeechRecognizer.authorizationStatus() == .authorized ||
+              SFSpeechRecognizer.authorizationStatus() == .notDetermined else {
+            return nil
+        }
+        
+        // Request authorization if needed
+        if SFSpeechRecognizer.authorizationStatus() == .notDetermined {
+            let granted = await withCheckedContinuation { continuation in
+                SFSpeechRecognizer.requestAuthorization { status in
+                    continuation.resume(returning: status == .authorized)
+                }
+            }
+            guard granted else { return nil }
+        }
+        
+        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US")),
+              recognizer.isAvailable else {
+            return nil
+        }
+        
+        // Prefer on-device recognition for speed and privacy
+        let request = SFSpeechURLRecognitionRequest(url: wavURL)
+        if recognizer.supportsOnDeviceRecognition {
+            request.requiresOnDeviceRecognition = true
+        }
+        
+        let start = Date()
+        
+        do {
+            let result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SFSpeechRecognitionResult, Error>) in
+                var hasResumed = false
+                recognizer.recognitionTask(with: request) { result, error in
+                    guard !hasResumed else { return }
+                    if let error {
+                        hasResumed = true
+                        continuation.resume(throwing: error)
+                        return
+                    }
+                    if let result, result.isFinal {
+                        hasResumed = true
+                        continuation.resume(returning: result)
+                    }
+                    // Ignore non-final partial results
+                }
+            }
+            
+            let text = result.bestTranscription.formattedString
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let ms = Int(Date().timeIntervalSince(start) * 1000)
+            
+            guard !text.isEmpty else { return nil }
+            return TranscriptionOutput(text: text, durationMs: ms)
+        } catch {
+            print("[KeyboardRecordView] SFSpeech failed: \(error)")
+            return nil
+        }
+    }
+    
+    // MARK: - On-device Whisper (Fallback 1)
     
     private func transcribeOnDevice(wavData: Data) async -> TranscriptionOutput? {
         let modelSizes = ["small", "base", "tiny"]

@@ -40,6 +40,8 @@
     </array>
     <key>NSMicrophoneUsageDescription</key>
     <string>KrakWhisper needs microphone access to record and transcribe your voice. All audio is processed on-device and never leaves your phone.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>KrakWhisper uses Apple Speech Recognition for fast on-device voice-to-text transcription from the keyboard.</string>
     <key>UIBackgroundModes</key>
     <array>
         <string>processing</string>
