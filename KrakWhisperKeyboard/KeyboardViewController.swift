@@ -1,10 +1,12 @@
 #if os(iOS)
 import UIKit
+import CryptoKit
 
 // MARK: - KrakWhisper QWERTY Keyboard
 // iOS keyboard extensions CANNOT access the microphone directly.
 // Mic button opens the main app (via URL scheme) which records + transcribes.
-// User swipes back to keyboard, which reads the result from App Group.
+// Keyboard receives Darwin notification when result is ready, reads encrypted
+// result from App Group, decrypts, and inserts text.
 
 final class KeyboardViewController: UIInputViewController {
     
@@ -51,11 +53,12 @@ final class KeyboardViewController: UIInputViewController {
         guard let inputView = self.inputView else { return }
         inputView.allowsSelfSizing = true
         setupKeyboard()
+        startListeningForTranscription()
     }
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // Check if main app left a transcription result for us
+        // Fallback: check if main app left a transcription result for us
         checkForTranscriptionResult()
     }
     
@@ -64,13 +67,62 @@ final class KeyboardViewController: UIInputViewController {
         checkForTranscriptionResult()
     }
     
-    // MARK: - Check for results from main app
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        stopListeningForTranscription()
+    }
+    
+    // MARK: - Darwin Notification IPC
+    
+    /// Register for Darwin notifications so we get alerted the instant the
+    /// main app finishes transcription — no need to wait for viewDidAppear.
+    private func startListeningForTranscription() {
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        CFNotificationCenterAddObserver(
+            center,
+            Unmanaged.passUnretained(self).toOpaque(),
+            { (_, observer, _, _, _) in
+                guard let observer = observer else { return }
+                let controller = Unmanaged<KeyboardViewController>
+                    .fromOpaque(observer)
+                    .takeUnretainedValue()
+                DispatchQueue.main.async {
+                    controller.checkForTranscriptionResult()
+                }
+            },
+            "com.krakwhisper.transcriptionReady" as CFString,
+            nil,
+            .deliverImmediately
+        )
+    }
+    
+    private func stopListeningForTranscription() {
+        CFNotificationCenterRemoveEveryObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            Unmanaged.passUnretained(self).toOpaque()
+        )
+    }
+    
+    // MARK: - Check for results from main app (encrypted)
     
     private func checkForTranscriptionResult() {
         guard let url = sharedURL?.appendingPathComponent(resultFileName),
               FileManager.default.fileExists(atPath: url.path),
-              let data = try? Data(contentsOf: url),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rawData = try? Data(contentsOf: url) else { return }
+        
+        // Decrypt the data (try encrypted first, fall back to plaintext)
+        let json: [String: Any]?
+        if let decryptedData = try? AppGroupCrypto.decrypt(rawData),
+           let decoded = try? JSONSerialization.jsonObject(with: decryptedData) as? [String: Any] {
+            json = decoded
+        } else if let decoded = try? JSONSerialization.jsonObject(with: rawData) as? [String: Any] {
+            // Fallback: unencrypted data (backwards compatibility)
+            json = decoded
+        } else {
+            return
+        }
+        
+        guard let json,
               let text = json["text"] as? String,
               let consumed = json["consumed"] as? Bool,
               consumed == false else { return }
@@ -91,10 +143,14 @@ final class KeyboardViewController: UIInputViewController {
             statusLabel.textColor = .systemOrange
         }
         
-        // Mark as consumed so we don't insert twice
+        // Mark as consumed so we don't insert twice (re-encrypt)
         var updated = json
         updated["consumed"] = true
-        if let updatedData = try? JSONSerialization.data(withJSONObject: updated) {
+        if let updatedData = try? JSONSerialization.data(withJSONObject: updated),
+           let encrypted = try? AppGroupCrypto.encrypt(updatedData) {
+            try? encrypted.write(to: url)
+        } else if let updatedData = try? JSONSerialization.data(withJSONObject: updated) {
+            // Fallback: write unencrypted
             try? updatedData.write(to: url)
         }
         
@@ -270,7 +326,7 @@ final class KeyboardViewController: UIInputViewController {
         keyboardPage = (keyboardPage == .numbers) ? .symbols : .numbers; buildKeyRows()
     }
     
-    // MARK: - Mic — Opens Main App
+    // MARK: - Mic — Opens Main App (iOS 26 modern URL scheme)
     
     @objc private func micTapped() {
         guard hasFullAccess else {
@@ -295,22 +351,28 @@ final class KeyboardViewController: UIInputViewController {
         statusLabel.text = "\u{1F3A4} Opening KrakWhisper..."
         statusLabel.textColor = .systemBlue
         
-        // Open main app via URL scheme
-        // Keyboard extensions can open URLs through the responder chain
-        if let url = URL(string: "krakwhisper://record") {
-            var responder: UIResponder? = self
-            while let r = responder {
-                if let app = r as? UIApplication {
-                    app.open(url, options: [:], completionHandler: nil)
-                    break
-                }
-                // Try the selector approach (works in keyboard extensions)
-                if r.responds(to: NSSelectorFromString("openURL:")) {
-                    r.perform(NSSelectorFromString("openURL:"), with: url)
-                    break
-                }
-                responder = r.next
+        openMainApp()
+    }
+    
+    /// Open main app via URL scheme using the modern iOS 26 responder chain pattern.
+    /// Uses `open(_:options:completionHandler:)` instead of the deprecated `openURL:` selector.
+    private func openMainApp() {
+        guard let url = URL(string: "krakwhisper://record") else { return }
+        
+        // Walk the responder chain to find something that responds to
+        // open(_:options:completionHandler:) — the modern API for iOS 26+
+        var responder: UIResponder? = self as UIResponder
+        while responder != nil {
+            if let app = responder as? UIApplication {
+                app.open(url, options: [:], completionHandler: nil)
+                return
             }
+            let sel = sel_getUid("openURL:options:completionHandler:")
+            if let obj = responder, obj.responds(to: sel) {
+                _ = obj.perform(sel, with: url, with: NSDictionary())
+                return
+            }
+            responder = responder?.next
         }
     }
 }

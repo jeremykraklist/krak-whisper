@@ -27,6 +27,8 @@
 		B020 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F020; };
 		B030 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = P001; };
 		BK01 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FK01; };
+		B019 /* AppGroupCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = F019; };
+		BK02 /* AppGroupCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = F019; };
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -66,6 +68,7 @@
 		F020 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F021 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F022 /* KrakWhisper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KrakWhisper.entitlements; sourceTree = "<group>"; };
+		F019 /* AppGroupCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupCrypto.swift; sourceTree = "<group>"; };
 		FK00 /* KrakWhisperKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KrakWhisperKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		FK01 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
 		FK03 /* AudioLevelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioLevelView.swift; sourceTree = "<group>"; };
@@ -140,6 +143,7 @@
 			isa = PBXGroup;
 			children = (
 				F004 /* AudioCaptureService.swift */,
+				F019 /* AppGroupCrypto.swift */,
 				F005 /* ModelDownloadManager.swift */,
 				F006 /* WhisperTranscriptionService.swift */,
 				F017 /* KeyboardTranscriptionService.swift */,
@@ -310,6 +314,7 @@
 				B016 /* WaveformView.swift in Sources */,
 				B017 /* KeyboardTranscriptionService.swift in Sources */,
 				B018 /* KeyboardRecordView.swift in Sources */,
+				B019 /* AppGroupCrypto.swift in Sources */,
 );
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -318,6 +323,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BK01 /* KeyboardViewController.swift in Sources */,
+				BK02 /* AppGroupCrypto.swift in Sources */,
 );
 			runOnlyForDeploymentPostprocessing = 0;
 		};

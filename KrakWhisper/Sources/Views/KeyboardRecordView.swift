@@ -2,6 +2,7 @@
 import SwiftUI
 import AVFoundation
 import SwiftWhisper
+import CryptoKit
 
 /// Full-screen recording view shown when keyboard triggers voice input.
 /// Records audio, transcribes with Whisper, writes result to App Group,
@@ -270,7 +271,7 @@ class KeyboardRecordViewModel: ObservableObject {
         }
     }
     
-    // MARK: - Write Result to App Group
+    // MARK: - Write Result to App Group (encrypted + Darwin notification)
     
     private func writeResult(text: String, durationMs: Int, error: String?) {
         guard let url = sharedURL?.appendingPathComponent(resultFileName) else { return }
@@ -281,9 +282,26 @@ class KeyboardRecordViewModel: ObservableObject {
             "consumed": false
         ]
         if let error { result["error"] = error }
-        if let data = try? JSONSerialization.data(withJSONObject: result) {
-            try? data.write(to: url)
+        
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: result) else { return }
+        
+        // Encrypt before writing to App Group
+        if let encrypted = try? AppGroupCrypto.encrypt(jsonData) {
+            try? encrypted.write(to: url)
+        } else {
+            // Fallback: write unencrypted if encryption fails
+            try? jsonData.write(to: url)
         }
+        
+        // Post Darwin notification so keyboard extension picks up result immediately
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        CFNotificationCenterPostNotification(
+            center,
+            CFNotificationName("com.krakwhisper.transcriptionReady" as CFString),
+            nil,
+            nil,
+            true
+        )
     }
     
     // MARK: - Helpers
