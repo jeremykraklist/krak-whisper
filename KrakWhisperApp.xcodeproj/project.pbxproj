@@ -29,6 +29,7 @@
 		BK01 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FK01; };
 		B019 /* AppGroupCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = F019; };
 		BK02 /* AppGroupCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = F019; };
+		BK07 /* KrakWhisperKeyboard.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = FK00; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
