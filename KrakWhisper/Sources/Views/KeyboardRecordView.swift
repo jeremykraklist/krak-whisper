@@ -4,88 +4,101 @@ import AVFoundation
 import SwiftWhisper
 import CryptoKit
 
-/// Full-screen recording view shown when keyboard triggers voice input.
-/// Records audio, transcribes with Whisper, writes result to App Group,
-/// then prompts user to swipe back to keyboard.
+/// Full-screen recording view styled like Whisper Flow.
+/// Minimal UI: cancel/confirm buttons, audio level dots, status text.
+/// Records → transcribes → writes to App Group → auto-returns.
 struct KeyboardRecordView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var recorder = KeyboardRecordViewModel()
     
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            // Dark blurred background
+            Color.black.opacity(0.92).ignoresSafeArea()
             
-            VStack(spacing: 30) {
-                Spacer()
-                
-                // Status icon
-                ZStack {
-                    Circle()
-                        .fill(recorder.statusColor.opacity(0.15))
-                        .frame(width: 160, height: 160)
+            VStack(spacing: 0) {
+                // Top bar: Cancel / Confirm
+                HStack {
+                    // Cancel button
+                    Button(action: { cancelRecording() }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Color.white.opacity(0.15))
+                            .clipShape(Circle())
+                    }
                     
-                    Circle()
-                        .fill(recorder.statusColor.opacity(0.3))
-                        .frame(width: 120, height: 120)
+                    Spacer()
                     
-                    Image(systemName: recorder.statusIcon)
-                        .font(.system(size: 50))
-                        .foregroundColor(recorder.statusColor)
-                }
-                .scaleEffect(recorder.isRecording ? 1.1 : 1.0)
-                .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: recorder.isRecording)
-                
-                // Status text
-                Text(recorder.statusText)
-                    .font(.title2.bold())
-                    .foregroundColor(.white)
-                
-                if recorder.isRecording {
-                    Text(String(format: "%.1fs", recorder.duration))
-                        .font(.system(size: 48, weight: .light, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.7))
-                }
-                
-                if recorder.isTranscribing {
-                    ProgressView()
-                        .tint(.white)
-                        .scaleEffect(1.5)
-                }
-                
-                Spacer()
-                
-                // Action button
-                if recorder.isRecording {
-                    Button(action: { recorder.stopAndTranscribe() }) {
-                        HStack {
-                            Image(systemName: "stop.fill")
-                            Text("Stop Recording")
+                    // Confirm/Stop button
+                    if recorder.isRecording {
+                        Button(action: { recorder.stopAndTranscribe() }) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.black)
+                                .frame(width: 44, height: 44)
+                                .background(Color.white)
+                                .clipShape(Circle())
                         }
-                        .font(.headline)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                
+                Spacer()
+                
+                // Center: Audio level dots + status
+                VStack(spacing: 24) {
+                    if recorder.isRecording {
+                        // Audio level dots (like Whisper Flow)
+                        AudioLevelDotsView(level: recorder.audioLevel)
+                            .frame(height: 16)
+                            .padding(.horizontal, 60)
+                    } else if recorder.isTranscribing {
+                        // Transcribing spinner
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(1.2)
+                    } else if recorder.isDone {
+                        // Checkmark
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 48))
+                            .foregroundColor(.green)
+                    }
+                    
+                    // Status text
+                    Text(recorder.statusText)
+                        .font(.system(size: 17, weight: .medium))
                         .foregroundColor(.white)
-                        .padding(.horizontal, 40)
-                        .padding(.vertical, 16)
-                        .background(Color.red)
-                        .cornerRadius(30)
+                    
+                    // Subtitle
+                    if recorder.isRecording {
+                        Text("iPhone Microphone")
+                            .font(.system(size: 14))
+                            .foregroundColor(.white.opacity(0.5))
                     }
-                } else if recorder.isDone {
-                    VStack(spacing: 16) {
-                        if !recorder.transcribedText.isEmpty {
-                            Text("\"\(recorder.transcribedText)\"")
-                                .font(.body)
-                                .foregroundColor(.white.opacity(0.8))
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 20)
-                                .lineLimit(3)
-                        }
-                        
-                        Text("Returning to keyboard...")
-                            .font(.headline)
-                            .foregroundColor(.white.opacity(0.6))
+                    
+                    // Transcribed text preview
+                    if recorder.isDone && !recorder.transcribedText.isEmpty {
+                        Text(recorder.transcribedText)
+                            .font(.system(size: 15))
+                            .foregroundColor(.white.opacity(0.7))
+                            .multilineTextAlignment(.center)
+                            .lineLimit(3)
+                            .padding(.horizontal, 30)
+                    }
+                    
+                    // Duration
+                    if recorder.isRecording {
+                        Text(String(format: "%d:%02d", Int(recorder.duration) / 60, Int(recorder.duration) % 60))
+                            .font(.system(size: 14, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.4))
                     }
                 }
                 
-                Spacer().frame(height: 40)
+                Spacer()
+                Spacer()
             }
         }
         .onAppear {
@@ -97,9 +110,8 @@ struct KeyboardRecordView: View {
         .onChange(of: recorder.isDone) { _, done in
             if done {
                 // Auto-dismiss and return to previous app
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     dismiss()
-                    // Background the app to return user to their previous app
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         Self.suspendApp()
                     }
@@ -108,13 +120,52 @@ struct KeyboardRecordView: View {
         }
     }
     
-    /// Suspend the app to return user to their previous app.
-    /// Uses the documented UIControl.sendAction technique.
+    private func cancelRecording() {
+        recorder.cleanup()
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            Self.suspendApp()
+        }
+    }
+    
     private static func suspendApp() {
-        // This sends the app to the background, returning the user
-        // to whatever app they were using before.
         let selector = NSSelectorFromString("suspend")
         UIApplication.shared.perform(selector)
+    }
+}
+
+// MARK: - Audio Level Dots
+
+/// Animated dots that respond to audio input level (like Whisper Flow).
+struct AudioLevelDotsView: View {
+    let level: Float
+    private let dotCount = 9
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<dotCount, id: \.self) { index in
+                Circle()
+                    .fill(Color.white.opacity(dotOpacity(for: index)))
+                    .frame(width: dotSize(for: index), height: dotSize(for: index))
+                    .animation(.easeInOut(duration: 0.15), value: level)
+            }
+        }
+    }
+    
+    private func dotSize(for index: Int) -> CGFloat {
+        let center = dotCount / 2
+        let distance = abs(index - center)
+        let baseSize: CGFloat = 8
+        let boost = CGFloat(level) * 4 * (1.0 - CGFloat(distance) / CGFloat(center + 1))
+        return baseSize + max(0, boost)
+    }
+    
+    private func dotOpacity(for index: Int) -> Double {
+        let center = dotCount / 2
+        let distance = abs(index - center)
+        let base = 0.4
+        let boost = Double(level) * 0.6 * (1.0 - Double(distance) / Double(center + 1))
+        return base + boost
     }
 }
 
@@ -126,9 +177,9 @@ class KeyboardRecordViewModel: ObservableObject {
     @Published var isDone = false
     @Published var duration: TimeInterval = 0
     @Published var statusText = "Preparing..."
-    @Published var statusIcon = "mic.fill"
     @Published var statusColor: Color = .blue
     @Published var transcribedText = ""
+    @Published var audioLevel: Float = 0
     
     private let appGroupID = "group.com.krakwhisper.shared"
     private let resultFileName = "keyboard-result.json"
@@ -148,8 +199,8 @@ class KeyboardRecordViewModel: ObservableObject {
             try session.setCategory(.record, mode: .default)
             try session.setActive(true)
         } catch {
-            statusText = "Mic error: \(error.localizedDescription)"
-            statusColor = .red; statusIcon = "exclamationmark.triangle"
+            statusText = "Mic error"
+            statusColor = .red
             return
         }
         
@@ -167,21 +218,31 @@ class KeyboardRecordViewModel: ObservableObject {
         
         do {
             let recorder = try AVAudioRecorder(url: url, settings: settings)
+            recorder.isMeteringEnabled = true
             recorder.record()
             audioRecorder = recorder
             isRecording = true
-            statusText = "Listening..."
-            statusIcon = "mic.fill"
+            statusText = "Listening"
             statusColor = .red
             
-            timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
                 guard let self, self.isRecording else { return }
-                self.duration += 0.1
-                if self.duration >= 60 { self.stopAndTranscribe() }
+                self.duration += 0.05
+                
+                // Update audio level from metering
+                self.audioRecorder?.updateMeters()
+                let db = self.audioRecorder?.averagePower(forChannel: 0) ?? -160
+                // Convert dB to 0-1 range (-55dB = silence, 0dB = max)
+                let normalized = max(0, min(1, (db + 55) / 55))
+                DispatchQueue.main.async {
+                    self.audioLevel = normalized
+                }
+                
+                if self.duration >= 120 { self.stopAndTranscribe() }
             }
         } catch {
-            statusText = "Record error: \(error.localizedDescription)"
-            statusColor = .red; statusIcon = "exclamationmark.triangle"
+            statusText = "Record error"
+            statusColor = .red
         }
     }
     
@@ -191,21 +252,18 @@ class KeyboardRecordViewModel: ObservableObject {
         timer?.invalidate()
         timer = nil
         isRecording = false
+        audioLevel = 0
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         
         guard duration > 0.3, let url = recordingURL, let wavData = try? Data(contentsOf: url) else {
             statusText = "Too short"
-            statusColor = .orange; statusIcon = "exclamationmark.triangle"
             isDone = true
             return
         }
         
         isTranscribing = true
         statusText = "Transcribing..."
-        statusIcon = "waveform"
-        statusColor = .blue
         
-        // Try on-device Whisper first, fall back to API
         Task {
             var result = await transcribeOnDevice(wavData: wavData)
             if result == nil { result = await transcribeViaAPI(wavData: wavData) }
@@ -217,13 +275,9 @@ class KeyboardRecordViewModel: ObservableObject {
                     transcribedText = result.text
                     writeResult(text: result.text, durationMs: result.durationMs, error: nil)
                     statusText = "Done!"
-                    statusIcon = "checkmark.circle.fill"
-                    statusColor = .green
                 } else {
-                    writeResult(text: "", durationMs: 0, error: "Transcription failed")
+                    writeResult(text: "", durationMs: 0, error: result == nil ? "Transcription failed" : "No speech detected")
                     statusText = "Failed"
-                    statusIcon = "xmark.circle.fill"
-                    statusColor = .red
                 }
                 isDone = true
             }
@@ -288,7 +342,7 @@ class KeyboardRecordViewModel: ObservableObject {
         }
     }
     
-    // MARK: - Write Result to App Group (encrypted + Darwin notification)
+    // MARK: - Write Result
     
     private func writeResult(text: String, durationMs: Int, error: String?) {
         guard let url = sharedURL?.appendingPathComponent(resultFileName) else { return }
@@ -302,22 +356,16 @@ class KeyboardRecordViewModel: ObservableObject {
         
         guard let jsonData = try? JSONSerialization.data(withJSONObject: result) else { return }
         
-        // Encrypt before writing to App Group
         if let encrypted = try? AppGroupCrypto.encrypt(jsonData) {
             try? encrypted.write(to: url)
         } else {
-            // Fallback: write unencrypted if encryption fails
             try? jsonData.write(to: url)
         }
         
-        // Post Darwin notification so keyboard extension picks up result immediately
-        let center = CFNotificationCenterGetDarwinNotifyCenter()
         CFNotificationCenterPostNotification(
-            center,
+            CFNotificationCenterGetDarwinNotifyCenter(),
             CFNotificationName("com.krakwhisper.transcriptionReady" as CFString),
-            nil,
-            nil,
-            true
+            nil, nil, true
         )
     }
     
