@@ -5,8 +5,6 @@ struct SettingsView: View {
     @ObservedObject var downloadManager: ModelDownloadManager
     @AppStorage("krakwhisper.autoCopyToClipboard") private var autoCopyToClipboard = true
     @AppStorage("krakwhisper.language") private var language = "en"
-    @AppStorage("krakwhisper.useAPICleanup") private var useAPICleanup = false
-    @AppStorage("krakwhisper.autoCleanup") private var autoCleanup = false
 
     var body: some View {
         NavigationStack {
@@ -50,16 +48,20 @@ struct SettingsView: View {
                     Toggle("Auto-copy to clipboard", isOn: $autoCopyToClipboard)
                 }
 
-                // MARK: - AI Cleanup
+                // MARK: - AI Cleanup (Qwen)
                 Section {
-                    Toggle("Auto-clean after transcription", isOn: $autoCleanup)
+                    // Qwen model download row
+                    QwenModelDownloadRow(downloadManager: downloadManager)
 
-                    Toggle("Use API for cleanup", isOn: $useAPICleanup)
-                        .disabled(true) // Stubbed — API integration not yet available
+                    Toggle("Auto-clean after transcription", isOn: Binding(
+                        get: { downloadManager.aiCleanupEnabled },
+                        set: { downloadManager.aiCleanupEnabled = $0 }
+                    ))
+                    .disabled(!downloadManager.isQwenModelAvailable)
                 } header: {
                     Text("AI Text Cleanup")
                 } footer: {
-                    Text("On-device cleanup removes filler words and fixes grammar. API cleanup (coming soon) provides deeper grammar and style corrections.")
+                    Text("Qwen 3.5 2B runs entirely on-device to clean up transcriptions — fixing punctuation, grammar, and removing filler words. Requires \(downloadManager.qwenModelSizeDescription) of storage.")
                 }
 
                 // MARK: - Keyboard Extension
@@ -99,6 +101,85 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
         }
+    }
+}
+
+// MARK: - QwenModelDownloadRow
+
+/// Row for downloading/managing the Qwen 3.5 2B cleanup model.
+struct QwenModelDownloadRow: View {
+    @ObservedObject var downloadManager: ModelDownloadManager
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Qwen 3.5 2B")
+                    .font(.body)
+
+                switch downloadManager.qwenDownloadState {
+                case .notDownloaded:
+                    Text("AI cleanup model · \(downloadManager.qwenModelSizeDescription)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .downloading(let progress):
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+                    Text("\(Int(progress * 100))% — Downloading…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .validating:
+                    Text("Validating…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .downloaded:
+                    Text("Downloaded ✓")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                case .failed(let message):
+                    Text("Failed: \(message)")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+
+            Spacer()
+
+            switch downloadManager.qwenDownloadState {
+            case .notDownloaded, .failed:
+                Button {
+                    downloadManager.downloadQwenModel()
+                } label: {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.title2)
+                        .foregroundStyle(.blue)
+                }
+                .buttonStyle(.plain)
+
+            case .downloading:
+                Button {
+                    downloadManager.cancelQwenDownload()
+                } label: {
+                    Image(systemName: "xmark.circle")
+                        .font(.title2)
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.plain)
+
+            case .validating:
+                ProgressView()
+
+            case .downloaded:
+                Button(role: .destructive) {
+                    downloadManager.deleteQwenModel()
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.title3)
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

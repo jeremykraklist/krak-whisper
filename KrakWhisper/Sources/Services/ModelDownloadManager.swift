@@ -46,11 +46,27 @@ public final class ModelDownloadManager: NSObject, ObservableObject {
         }
     }
 
+    // MARK: - Qwen Model State
+
+    /// Download state for the Qwen 3.5 2B cleanup model.
+    @Published public private(set) var qwenDownloadState: ModelDownloadState = .notDownloaded
+
+    /// Whether AI cleanup is enabled (requires Qwen model to be downloaded).
+    @Published public var aiCleanupEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(aiCleanupEnabled, forKey: Self.aiCleanupKey)
+        }
+    }
+
     // MARK: - Private Properties
 
     private static let selectedModelKey = "krakwhisper.selectedModel"
+    private static let aiCleanupKey = "krakwhisper.aiCleanupEnabled"
     private static let backgroundSessionID = "com.krakwhisper.model-download"
     private let logger = Logger(subsystem: "com.krakwhisper", category: "ModelDownloadManager")
+
+    /// Active Qwen download task (separate from Whisper downloads).
+    private var qwenDownloadTask: URLSessionDownloadTask?
 
     /// The directory where models are stored
     private let modelsDirectory: URL
@@ -107,6 +123,9 @@ public final class ModelDownloadManager: NSObject, ObservableObject {
             self.selectedModel = WhisperModelSize.defaultModel
         }
 
+        // Restore AI cleanup preference
+        self.aiCleanupEnabled = UserDefaults.standard.object(forKey: Self.aiCleanupKey) as? Bool ?? false
+
         super.init()
 
         // Create models directory if needed
@@ -119,6 +138,14 @@ public final class ModelDownloadManager: NSObject, ObservableObject {
 
         // Initialize states for all models
         refreshDownloadStates()
+
+        // Initialize Qwen model state
+        refreshQwenDownloadState()
+
+        // Auto-enable AI cleanup if model is already downloaded and user hasn't explicitly set preference
+        if UserDefaults.standard.object(forKey: Self.aiCleanupKey) == nil && qwenDownloadState == .downloaded {
+            aiCleanupEnabled = true
+        }
 
         // Sync selected model to shared defaults for the keyboard extension
         syncSelectedModelToSharedDefaults()
@@ -214,14 +241,122 @@ public final class ModelDownloadManager: NSObject, ObservableObject {
         }
     }
 
-    /// Total disk space used by downloaded models.
+    // MARK: - Qwen Model Management
+
+    /// URL to the Qwen GGUF model file.
+    public var qwenModelURL: URL {
+        modelsDirectory.appendingPathComponent(QwenCleanupService.modelFileName)
+    }
+
+    /// Whether the Qwen model is downloaded and ready.
+    public var isQwenModelAvailable: Bool {
+        qwenDownloadState == .downloaded
+    }
+
+    /// Start downloading the Qwen 3.5 2B model from CDN.
+    public func downloadQwenModel() {
+        guard qwenDownloadState != .downloaded else {
+            logger.info("Qwen model already downloaded, skipping.")
+            return
+        }
+        if case .downloading = qwenDownloadState {
+            logger.info("Qwen model already downloading, skipping.")
+            return
+        }
+
+        logger.info("Starting Qwen model download from \(QwenCleanupService.downloadURL)")
+        qwenDownloadState = .downloading(progress: 0.0)
+
+        let task = backgroundSession.downloadTask(with: QwenCleanupService.downloadURL)
+        task.taskDescription = "qwen-cleanup"
+        qwenDownloadTask = task
+        task.resume()
+    }
+
+    /// Cancel the in-progress Qwen model download.
+    public func cancelQwenDownload() {
+        guard let task = qwenDownloadTask else { return }
+        logger.info("Cancelling Qwen model download")
+        task.cancel()
+        qwenDownloadTask = nil
+        qwenDownloadState = .notDownloaded
+    }
+
+    /// Delete the downloaded Qwen model file.
+    public func deleteQwenModel() {
+        // Unload from memory first
+        QwenCleanupService.shared.unloadModel()
+
+        let fileURL = qwenModelURL
+        do {
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                try FileManager.default.removeItem(at: fileURL)
+            }
+            logger.info("Deleted Qwen model")
+            qwenDownloadState = .notDownloaded
+            aiCleanupEnabled = false
+        } catch {
+            logger.error("Failed to delete Qwen model: \(error.localizedDescription)")
+        }
+    }
+
+    /// Refresh the Qwen model download state by checking the local file.
+    public func refreshQwenDownloadState() {
+        // Don't overwrite active download
+        if case .downloading = qwenDownloadState { return }
+
+        let fileURL = qwenModelURL
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            if validateQwenModelFile() {
+                qwenDownloadState = .downloaded
+            } else {
+                qwenDownloadState = .failed(message: "File corrupted")
+                try? FileManager.default.removeItem(at: fileURL)
+            }
+        } else {
+            qwenDownloadState = .notDownloaded
+        }
+    }
+
+    /// Validate the downloaded Qwen model file size.
+    private func validateQwenModelFile() -> Bool {
+        let fileURL = qwenModelURL
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+              let fileSize = attrs[.size] as? Int64 else {
+            return false
+        }
+
+        let expected = QwenCleanupService.expectedFileSize
+        let tolerance = Int64(Double(expected) * 0.05)
+        let valid = fileSize >= (expected - tolerance) && fileSize <= (expected + tolerance)
+
+        if !valid {
+            logger.warning("Qwen model size \(fileSize) outside expected range \(expected - tolerance)-\(expected + tolerance)")
+        }
+        return valid
+    }
+
+    /// Formatted Qwen model file size for display.
+    public var qwenModelSizeDescription: String {
+        ByteCountFormatter.string(fromByteCount: QwenCleanupService.expectedFileSize, countStyle: .file)
+    }
+
+    /// Total disk space used by downloaded models (Whisper + Qwen).
     public var totalDiskUsage: Int64 {
-        WhisperModelSize.allCases.reduce(0) { total, model in
+        var total: Int64 = WhisperModelSize.allCases.reduce(0) { sum, model in
             let url = localURL(for: model)
             guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-                  let size = attrs[.size] as? Int64 else { return total }
-            return total + size
+                  let size = attrs[.size] as? Int64 else { return sum }
+            return sum + size
         }
+
+        // Include Qwen model if downloaded
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: qwenModelURL.path),
+           let size = attrs[.size] as? Int64 {
+            total += size
+        }
+
+        return total
     }
 
     /// Formatted total disk usage string.
@@ -334,8 +469,15 @@ extension ModelDownloadManager: URLSessionDownloadDelegate {
         downloadTask: URLSessionDownloadTask,
         didFinishDownloadingTo location: URL
     ) {
-        guard let modelRaw = downloadTask.taskDescription,
-              let model = WhisperModelSize(rawValue: modelRaw) else {
+        let taskDesc = downloadTask.taskDescription ?? ""
+
+        // Handle Qwen model download
+        if taskDesc == "qwen-cleanup" {
+            handleQwenDownloadComplete(location: location)
+            return
+        }
+
+        guard let model = WhisperModelSize(rawValue: taskDesc) else {
             return
         }
 
@@ -375,6 +517,39 @@ extension ModelDownloadManager: URLSessionDownloadDelegate {
         }
     }
 
+    /// Handle completed Qwen model download — moves file synchronously.
+    nonisolated private func handleQwenDownloadComplete(location: URL) {
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let modelsDir = documentsURL.appendingPathComponent("Models", isDirectory: true)
+        let destinationURL = modelsDir.appendingPathComponent(QwenCleanupService.modelFileName)
+
+        do {
+            try FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                try FileManager.default.removeItem(at: destinationURL)
+            }
+            try FileManager.default.moveItem(at: location, to: destinationURL)
+        } catch {
+            Task { @MainActor in
+                self.qwenDownloadState = .failed(message: error.localizedDescription)
+            }
+            return
+        }
+
+        Task { @MainActor in
+            self.qwenDownloadTask = nil
+            if self.validateQwenModelFile() {
+                self.qwenDownloadState = .downloaded
+                self.aiCleanupEnabled = true
+                self.logger.info("Successfully downloaded and validated Qwen model")
+            } else {
+                try? FileManager.default.removeItem(at: self.qwenModelURL)
+                self.qwenDownloadState = .failed(message: "Validation failed — file size mismatch")
+                self.logger.error("Validation failed for Qwen model")
+            }
+        }
+    }
+
     nonisolated public func urlSession(
         _ session: URLSession,
         downloadTask: URLSessionDownloadTask,
@@ -382,8 +557,23 @@ extension ModelDownloadManager: URLSessionDownloadDelegate {
         totalBytesWritten: Int64,
         totalBytesExpectedToWrite: Int64
     ) {
-        guard let modelRaw = downloadTask.taskDescription,
-              let model = WhisperModelSize(rawValue: modelRaw) else {
+        let taskDesc = downloadTask.taskDescription ?? ""
+
+        // Handle Qwen download progress
+        if taskDesc == "qwen-cleanup" {
+            let progress: Double
+            if totalBytesExpectedToWrite > 0 {
+                progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+            } else {
+                progress = Double(totalBytesWritten) / Double(QwenCleanupService.expectedFileSize)
+            }
+            Task { @MainActor in
+                self.qwenDownloadState = .downloading(progress: min(progress, 1.0))
+            }
+            return
+        }
+
+        guard let model = WhisperModelSize(rawValue: taskDesc) else {
             return
         }
 
@@ -405,14 +595,24 @@ extension ModelDownloadManager: URLSessionDownloadDelegate {
         task: URLSessionTask,
         didCompleteWithError error: (any Error)?
     ) {
-        guard let error = error,
-              let modelRaw = task.taskDescription,
-              let model = WhisperModelSize(rawValue: modelRaw) else {
-            return
-        }
+        guard let error = error else { return }
+
+        let taskDesc = task.taskDescription ?? ""
 
         // Ignore cancellation errors
         if (error as NSError).code == NSURLErrorCancelled { return }
+
+        // Handle Qwen download error
+        if taskDesc == "qwen-cleanup" {
+            Task { @MainActor in
+                self.qwenDownloadTask = nil
+                self.qwenDownloadState = .failed(message: error.localizedDescription)
+                self.logger.error("Qwen download failed: \(error.localizedDescription)")
+            }
+            return
+        }
+
+        guard let model = WhisperModelSize(rawValue: taskDesc) else { return }
 
         Task { @MainActor in
             activeDownloads.removeValue(forKey: model)

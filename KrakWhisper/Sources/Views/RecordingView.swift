@@ -52,6 +52,9 @@ public struct RecordingView: View {
     }
 
     private var statusText: String {
+        if viewModel.isCleaningUp {
+            return "Cleaning up text…"
+        }
         switch viewModel.state {
         case .idle:
             return viewModel.isModelLoaded ? "Ready to record" : "Loading model…"
