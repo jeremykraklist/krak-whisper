@@ -39,7 +39,7 @@
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
     <key>NSMicrophoneUsageDescription</key>
-    <string>KrakWhisper needs microphone access to record and transcribe your voice. All audio is processed on-device and never leaves your phone.</string>
+    <string>KrakWhisper needs microphone access to record voice input for transcription. Transcription may occur on-device or through our transcription service when needed.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>KrakWhisper uses speech recognition to transcribe voice input. Transcription may occur on-device or through our transcription service when needed.</string>
     <key>UIBackgroundModes</key>

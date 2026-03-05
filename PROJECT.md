@@ -8,7 +8,7 @@
 - **Deploy iOS:** `build-testflight.sh` on MBA (100.99.168.22) — archives + uploads to App Store Connect
 
 ## What Is This?
-Cross-platform local speech-to-text app. Replaces Whisper Flow subscription ($8/mo). Runs OpenAI's Whisper model entirely on-device — zero API calls, zero subscriptions, full privacy.
+Cross-platform local speech-to-text app. Replaces Whisper Flow subscription ($8/mo). Runs OpenAI's Whisper model primarily on-device — zero subscriptions, full privacy. A self-hosted Contabo API is available as a fallback when on-device transcription is unavailable.
 
 ## Architecture
 ```
@@ -80,7 +80,7 @@ Cross-platform local speech-to-text app. Replaces Whisper Flow subscription ($8/
 
 ## Key Decisions
 - whisper.cpp via SwiftWhisper SPM package (not Python whisper)
-- Local-only processing (no cloud APIs)
+- On-device processing preferred; self-hosted Contabo Whisper API available as optional fallback
 - Self-hosted models on Contabo CDN (HuggingFace redirects break URLSession)
 - Separate .xcodeproj from Package.swift (Package.swift includes macOS targets that cause errors)
 - Shell script (`build-testflight.sh`) over Fastlane for TestFlight deployment
