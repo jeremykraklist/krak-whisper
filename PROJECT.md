@@ -8,7 +8,7 @@
 - **Deploy iOS:** `build-testflight.sh` on MBA (100.99.168.22) — archives + uploads to App Store Connect
 
 ## What Is This?
-Cross-platform local speech-to-text app. Replaces Whisper Flow subscription ($8/mo). Runs OpenAI's Whisper model entirely on-device — zero API calls, zero subscriptions, full privacy.
+Cross-platform local speech-to-text app. Replaces Whisper Flow subscription ($8/mo). Runs OpenAI's Whisper model primarily on-device — zero subscriptions, full privacy. A self-hosted Contabo API is available as a fallback when on-device transcription is unavailable.
 
 ## Architecture
 ```
@@ -80,8 +80,9 @@ Cross-platform local speech-to-text app. Replaces Whisper Flow subscription ($8/
 
 ## Key Decisions
 - whisper.cpp via SwiftWhisper SPM package (not Python whisper)
-- Local-only processing (no cloud APIs)
+- On-device processing preferred; self-hosted Contabo Whisper API available as optional fallback
 - Self-hosted models on Contabo CDN (HuggingFace redirects break URLSession)
 - Separate .xcodeproj from Package.swift (Package.swift includes macOS targets that cause errors)
 - Shell script (`build-testflight.sh`) over Fastlane for TestFlight deployment
 - NLP-based cleanup first, Qwen 3.5 2B replaces it later (Phase 3)
+- **Keyboard IPC (iOS 26):** Replaced broken `openMainApp()` responder-chain hack with `extensionContext?.open(url)` (primary) + SwiftUI `Link` fallback for URL opening. `SFSpeechRecognizer` is the primary transcription engine in `KeyboardRecordView` (on-device, zero model download), with on-device Whisper + Contabo API as fallbacks. App Group + Darwin notification IPC retained for state sharing between keyboard extension and main app. See `docs/keyboard-ipc-research.md`. (PR #47, Issue #42)
